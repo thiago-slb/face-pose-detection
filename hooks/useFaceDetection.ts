@@ -87,8 +87,15 @@ export interface UseFaceDetectionResult {
   debugReadout: {
     cx: number | null;
     cy: number | null;
+    yaw: number | null;
+    pitch: number | null;
+    detectedPose: FaceGuidance['detectedPose'];
+    stabilizationProgress: number;
     alignmentStatus: FaceGuidance['alignmentStatus'];
     faceDetected: boolean;
+    lastGuidanceAtMs: number | null;
+    lastNativeCapturePoseId: string | null;
+    lastNativeCaptureAtMs: number | null;
   };
   /** Set when native pipeline delivers a best-frame capture. Clear after consuming. */
   captureResult: NativeCaptureResult | null;
@@ -119,15 +126,29 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
   const latestDebugRef  = useRef<UseFaceDetectionResult['debugReadout']>({
     cx: null,
     cy: null,
+    yaw: null,
+    pitch: null,
+    detectedPose: 'center',
+    stabilizationProgress: 0,
     alignmentStatus: 'noFace',
     faceDetected: false,
+    lastGuidanceAtMs: null,
+    lastNativeCapturePoseId: null,
+    lastNativeCaptureAtMs: null,
   });
   const [guidance, setGuidance]           = useState<FaceGuidance>(DEFAULT_GUIDANCE);
   const [debugReadout, setDebugReadout]   = useState<UseFaceDetectionResult['debugReadout']>({
     cx: null,
     cy: null,
+    yaw: null,
+    pitch: null,
+    detectedPose: 'center',
+    stabilizationProgress: 0,
     alignmentStatus: 'noFace',
     faceDetected: false,
+    lastGuidanceAtMs: null,
+    lastNativeCapturePoseId: null,
+    lastNativeCaptureAtMs: null,
   });
   const [captureResult, setCaptureResult] = useState<NativeCaptureResult | null>(null);
 
@@ -211,7 +232,13 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     const isGuidance = kind === 'guidance' || kind === 0;
 
     if (isCaptured) {
-      setCaptureResult(raw);
+      const capture = raw as NativeCaptureResult;
+      latestDebugRef.current = {
+        ...latestDebugRef.current,
+        lastNativeCapturePoseId: typeof capture.poseId === 'string' ? capture.poseId : null,
+        lastNativeCaptureAtMs: Date.now(),
+      };
+      setCaptureResult(capture);
       return;
     }
     if (!isGuidance) return;
@@ -243,10 +270,16 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     };
     latestRef.current = nextGuidance;
     latestDebugRef.current = {
+      ...latestDebugRef.current,
       cx: typeof raw.faceCenterX === 'number' ? raw.faceCenterX : null,
       cy: typeof raw.faceCenterY === 'number' ? raw.faceCenterY : null,
+      yaw: typeof raw.yaw === 'number' ? raw.yaw : null,
+      pitch: typeof raw.pitch === 'number' ? raw.pitch : null,
+      detectedPose: nextGuidance.detectedPose,
+      stabilizationProgress: nextGuidance.stabilizationProgress,
       alignmentStatus: nextGuidance.alignmentStatus,
       faceDetected: raw.faceDetected,
+      lastGuidanceAtMs: Date.now(),
     };
   }, [smoother, thresholds]);
 
@@ -269,8 +302,15 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
         if (
           prev.cx === next.cx &&
           prev.cy === next.cy &&
+          prev.yaw === next.yaw &&
+          prev.pitch === next.pitch &&
+          prev.detectedPose === next.detectedPose &&
+          prev.stabilizationProgress === next.stabilizationProgress &&
           prev.alignmentStatus === next.alignmentStatus &&
-          prev.faceDetected === next.faceDetected
+          prev.faceDetected === next.faceDetected &&
+          prev.lastGuidanceAtMs === next.lastGuidanceAtMs &&
+          prev.lastNativeCapturePoseId === next.lastNativeCapturePoseId &&
+          prev.lastNativeCaptureAtMs === next.lastNativeCaptureAtMs
         ) return prev;
         return next;
       });

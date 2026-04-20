@@ -31,6 +31,7 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
   private val pipeline = FaceCapturePipeline(appContext)
 
   private val pendingCapture = AtomicReference<CapturePayload?>(null)
+  private val lastTargetPose = AtomicReference<String?>(null)
 
   init {
     pipeline.onCapture = { payload -> pendingCapture.set(payload) }
@@ -41,25 +42,35 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     args: FaceDetectionArgs,
   ): Variant_NullType_GuidanceResult_CaptureResult {
     val targetPose = args.targetPose
+    val previousPose = lastTargetPose.getAndSet(targetPose)
+    if (previousPose != null && previousPose != targetPose) {
+      // Pose step changed (e.g. center -> left). Drop any stale capture from the
+      // previous step and restart stabilization for the new target.
+      pendingCapture.set(null)
+      pipeline.reset()
+    }
 
     pendingCapture.getAndSet(null)?.let { payload ->
-      return Variant_NullType_GuidanceResult_CaptureResult.create(
-        CaptureResult(
-          type = NativeResultType.CAPTURED,
-          poseId = payload.poseId,
-          uri = payload.uri,
-          qualityScore = payload.qualityScore,
-          scores = CaptureScores(
-            brightness = payload.scores.brightness.toDouble(),
-            sharpness = payload.scores.sharpness.toDouble(),
-            centeredness = payload.scores.centeredness.toDouble(),
-            poseAccuracy = payload.scores.poseAccuracy.toDouble(),
-            stability = payload.scores.stability.toDouble(),
-            faceSize = payload.scores.faceSize.toDouble(),
-            composite = payload.scores.composite.toDouble(),
+      // Drop stale captures from a previous pose step.
+      if (payload.poseId == targetPose) {
+        return Variant_NullType_GuidanceResult_CaptureResult.create(
+          CaptureResult(
+            type = NativeResultType.CAPTURED,
+            poseId = payload.poseId,
+            uri = payload.uri,
+            qualityScore = payload.qualityScore,
+            scores = CaptureScores(
+              brightness = payload.scores.brightness.toDouble(),
+              sharpness = payload.scores.sharpness.toDouble(),
+              centeredness = payload.scores.centeredness.toDouble(),
+              poseAccuracy = payload.scores.poseAccuracy.toDouble(),
+              stability = payload.scores.stability.toDouble(),
+              faceSize = payload.scores.faceSize.toDouble(),
+              composite = payload.scores.composite.toDouble(),
+            ),
           ),
-        ),
-      )
+        )
+      }
     }
 
     val imageProxy = (frame as? NativeFrame)?.image ?: return noFaceResult(targetPose)

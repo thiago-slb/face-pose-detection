@@ -15,6 +15,7 @@ class FaceDetectionFrameProcessor: HybridFaceDetectionFrameProcessorSpec {
 
   private var pendingCapture: [String: Any]? = nil
   private let pendingLock = NSLock()
+  private var lastTargetPose: String? = nil
 
   override init() {
     super.init()
@@ -26,15 +27,29 @@ class FaceDetectionFrameProcessor: HybridFaceDetectionFrameProcessorSpec {
   }
 
   func processFrame(frame: any HybridFrameSpec, args: FaceDetectionArgs) throws -> Variant_NullType_GuidanceResult_CaptureResult {
+    let targetPose = args.targetPose
+    if let previousPose = lastTargetPose, previousPose != targetPose {
+      // Pose step changed (e.g. center -> left). Drop stale pending captures and
+      // restart the native stabilization window for the new target.
+      pipeline.reset()
+      pendingLock.lock()
+      pendingCapture = nil
+      pendingLock.unlock()
+    }
+    lastTargetPose = targetPose
+
     pendingLock.lock()
     if let pending = pendingCapture {
       pendingCapture = nil
       pendingLock.unlock()
-      return .third(captureResult(from: pending))
+      // Drop stale captures from a previous pose step.
+      let pendingPose = pending["poseId"] as? String
+      if pendingPose == targetPose {
+        return .third(captureResult(from: pending))
+      }
+    } else {
+      pendingLock.unlock()
     }
-    pendingLock.unlock()
-
-    let targetPose = args.targetPose
 
     guard let nativeFrame = frame as? NativeFrame,
           let sampleBuffer = nativeFrame.sampleBuffer
