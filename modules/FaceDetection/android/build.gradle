@@ -133,6 +133,7 @@ dependencies {
 
   implementation project(":react-native-nitro-modules")
   implementation project(":react-native-vision-camera")
+  implementation "androidx.camera:camera-core:1.7.0-alpha01"
 
   implementation 'com.google.mlkit:face-detection:16.1.7'
 }

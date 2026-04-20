@@ -41,3 +41,9 @@ app-example
 # generated native folders
 /ios
 /android
+
+# local native modules: generated/build artifacts
+/modules/*/android/build/
+/modules/*/android/.cxx/
+/modules/*/ios/build/
+/modules/*/nitrogen/generated/

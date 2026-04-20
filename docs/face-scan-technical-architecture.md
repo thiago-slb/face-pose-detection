@@ -2,200 +2,193 @@
 
 ## 1. Purpose
 
-This document explains how the app captures and parses face frames, what is analyzed on each frame, how the best image is selected, and which technologies power the pipeline.
+This document describes the current face-scan implementation in this project:
+- how frames are collected and processed
+- what native analysis runs per frame
+- how best-frame capture works
+- how JS orchestrates the 5-pose flow
 
-The pipeline supports 5 poses:
+Target poses:
 - `center`
 - `left`
 - `right`
 - `up`
 - `down`
 
-## 2. End-to-End Flow
+## 2. Current App Surface
 
-1. The React Native UI opens the front camera using VisionCamera.
-2. A frame worklet (`useFrameOutput`) runs per frame on the camera thread.
-3. The worklet calls the native Nitro HybridObject `FaceDetectionFrameProcessor.processFrame(frame, { targetPose })`.
-4. Native returns one of two payloads:
-- `guidance`: per-frame face telemetry + stabilization progress.
-- `captured`: best-frame result for a pose, including JPEG path and quality scores.
-5. JS smooths/derives guidance for UX feedback (`distance`, `alignment`, `quality`, message).
-6. When native emits `captured`, JS stores the frame for the current pose and advances to the next pose.
+Current routed screens are only:
+- `app/(tabs)/index.tsx`
+- `app/(tabs)/_layout.tsx`
+- `app/_layout.tsx`
 
-## 3. Frame Collection and Parsing
+`explore` and `modal` routes are removed.
 
-## 3.1 Camera stream and frame worklet
+The scan flow is rendered from `app/(tabs)/index.tsx` and switches among:
+- intro screen
+- camera/scan screen
+- success screen
 
-- Camera component: `react-native-vision-camera` `<Camera outputs={[frameOutput]} />`
-- Frame hook: `useFrameOutput({ onFrame })` in `hooks/useFaceDetection.ts`
-- Processing rate: JS intentionally skips every other frame (`processEveryNFrames = 2`) to reduce load.
-- Worklet cleanup: each processed/skipped frame is explicitly disposed (`frame.dispose()`).
+## 3. End-to-End Runtime Flow
 
-## 3.2 Native bridge contract
+1. UI starts scan via `useFaceScanFlow`.
+2. `useFaceDetection` sets up a VisionCamera frame output (`useFrameOutput`).
+3. Worklet calls `detectFace(frame, { targetPose })`.
+4. `detectFace` resolves Nitro HybridObject `FaceDetectionFrameProcessor` and synchronously calls native `processFrame(...)`.
+5. Native returns one of:
+- `guidance` per-frame telemetry
+- `captured` best-frame event for current pose
+6. JS applies smoothing/derivation to guidance and updates UI.
+7. On `captured`, JS stores URI for current pose and advances to next pose.
 
-HybridObject name is `FaceDetectionFrameProcessor` on both platforms, registered via Nitro autolinking:
+## 4. JavaScript/Worklet Layer
+
+### 4.1 Nitro binding
+
+File: `frameProcessors/detectFace.ts`
+
+- Hybrid object name: `FaceDetectionFrameProcessor`
+- Uses:
+- `NitroModules.hasHybridObject(...)`
+- `NitroModules.createHybridObject(...)`
+- `NitroModules.box(...).unbox()` for worklet-safe usage
+- Exposes:
+- `detectFace(...)`
+- `isPluginLinked`
+
+If not linked, `detectFace` returns `null` and the hook can run in mock mode.
+
+### 4.2 Detection hook
+
+File: `hooks/useFaceDetection.ts`
+
+Responsibilities:
+- runs frame processing with throttling (`processEveryNFrames`, default 2)
+- forwards `targetPose` via shared value into worklet
+- maps native guidance to app guidance model
+- handles native captured events
+- supports mock mode (`mockMode = !isPluginLinked` by default)
+- updates React state on interval (`stateUpdateIntervalMs`, default 100ms)
+
+### 4.3 Scan flow hook
+
+File: `hooks/useFaceScanFlow.ts`
+
+Responsibilities:
+- pose orchestration across 5 steps
+- pose status transitions (`detecting`, `stabilizing`, `captured`)
+- stores captured frame URIs per pose
+- advances to success screen when all poses complete
+
+## 5. Native Module Architecture (Nitro)
+
+Local package:
+- `react-native-face-detection` (via `file:modules/FaceDetection` in root `package.json`)
+
+Core files:
+- `modules/FaceDetection/nitro.json`
+- `modules/FaceDetection/src/specs/FaceDetectionFrameProcessor.nitro.ts`
+- `modules/FaceDetection/nitrogen/generated/...` (generated bridges/autolinking)
+
+### 5.1 Registered HybridObject
+
+Name: `FaceDetectionFrameProcessor`
+
+Generated registration:
 - Android: `modules/FaceDetection/nitrogen/generated/android/FaceDetectionOnLoad.cpp`
 - iOS: `modules/FaceDetection/nitrogen/generated/ios/FaceDetectionAutolinking.mm`
 
-Returned union type:
-- `guidance` payload:
-- `faceDetected`
-- normalized bounding box (`boundingBoxX/Y/Width/Height`, range `0..1`)
-- head angles (`yaw`, `pitch`, `roll`, degrees)
-- raw quality metrics (`brightness`, `sharpness`, range `0..1`)
-- geometry (`faceSizeRatio`, `faceCenterX`, `faceCenterY`)
-- `stabilizationProgress` (`0..1`)
-- `captured` payload:
-- `poseId`
-- `uri` (absolute JPEG path when available)
-- `qualityScore` (composite)
-- detailed scores (`brightness`, `sharpness`, `centeredness`, `poseAccuracy`, `stability`, `faceSize`, `composite`)
+## 6. Android Implementation
 
-## 3.3 Parsing in JS
-
-`hooks/useFaceDetection.ts`:
-- Converts native guidance to `RawFaceDetectionResult`.
-- Applies EMA smoothing (`FaceDataSmoother`).
-- Derives UX guidance (`deriveGuidance`) for:
-- detected pose
-- distance status
-- alignment status
-- quality status
-- user-facing messages
-- Syncs guidance state at a throttled interval (default `100ms`) to decouple UI from camera FPS.
-
-## 4. What Is Analyzed Per Frame
-
-## 4.1 Face detection and pose estimation
-
-Android (`FaceDetectionFrameProcessor.kt`):
-- Uses Google ML Kit Face Detection (`PERFORMANCE_MODE_FAST`, tracking enabled).
-- Reads bounding box and Euler angles from `Face`.
-
-iOS (`FaceDetectionFrameProcessor.swift`):
-- Uses Apple Vision (`VNDetectFaceLandmarksRequest` + `VNSequenceRequestHandler`).
-- Reads `VNFaceObservation` bounding box and `yaw/pitch/roll`.
-
-Both platforms normalize conventions so JS uses consistent semantics:
-- `yaw > 0` means face turned right.
-- `pitch > 0` means face tilted up.
-
-## 4.2 Quality metrics (computed on face ROI Y plane)
-
-For the detected face rectangle, both platforms compute:
-- Brightness: mean luma sampled with stride 8.
-- Sharpness: Laplacian-variance-based sharpness sampled with stride 16, normalized to `0..1`.
-
-This makes scoring resilient to color-space differences and keeps per-frame cost low.
-
-## 4.3 Readiness gates (must pass before stabilization window)
-
-Native readiness checks include:
-- face detected
-- pose near target (`maxYawDeviation`, `maxPitchDeviation`)
-- alignment near center (`maxAlignmentOffsetX/Y`)
-- acceptable face size range (`readinessMinSize`, `readinessMaxSize`)
-- minimum image quality (`minBrightness`, `maxBrightness`, `minSharpness`)
-
-Defaults are defined in:
-- Android: `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/CaptureConfig.kt`
-- iOS: `modules/FaceDetection/ios/CaptureConfig.swift`
-
-## 4.4 Best-frame scoring dimensions
-
-For candidate frames that pass hard rejection, native computes:
-- `brightness`: Gaussian score around ideal luma.
-- `sharpness`: normalized sharpness.
-- `centeredness`: distance from frame center.
-- `poseAccuracy`: Gaussian distance to target yaw/pitch.
-- `stability`: inter-frame angular motion penalty.
-- `faceSize`: Gaussian score around ideal face-size ratio.
-
-Composite score is a weighted sum (defaults):
-- sharpness `0.30`
-- poseAccuracy `0.25`
-- brightness `0.20`
-- centeredness `0.15`
-- faceSize `0.05`
-- stability `0.05`
-
-## 5. Stabilization and Capture Strategy
-
-Native pipeline state machine (`FaceCapturePipeline` on iOS/Android):
-1. `idle`
-2. `running(startedAt, best?)`
-3. `encoding`
-4. back to `idle`
-
-Mechanics:
-- When readiness is first satisfied, the stabilization window starts.
-- Window duration default is `500ms`.
-- During window, only the highest composite frame is retained.
-- At window end, best frame is JPEG-encoded asynchronously and emitted as `captured`.
-
-Memory/throughput considerations:
-- Android copies YUV planes synchronously during callback for the current best candidate, then encodes on background thread.
-- iOS retains a copied `CMSampleBuffer` for the best candidate, then encodes on background queue.
-- At most one best candidate is retained at a time.
-
-## 6. JS Orchestration and UX State
-
-`hooks/useFaceScanFlow.ts` orchestrates pose progression:
-- Pose-level state: `idle -> detecting -> stabilizing -> captured`
-- Screen-level state: `intro -> scanning -> success`
-- Uses native `stabilizationProgress` to drive progress UI.
-- Consumes native `captured` events to store per-pose frames and advance.
-
-The scan loop ends after all 5 poses are captured.
-
-## 7. Technologies Used
-
-Application layer:
-- Expo + React Native
-- TypeScript
-- Expo Router
-
-Camera/worklets:
-- `react-native-vision-camera` (v5 API style with `useFrameOutput`)
-- `react-native-vision-camera-worklets`
-- `react-native-worklets`
-- `react-native-reanimated` (for `runOnJS` and UI animation integration)
-
-Native analysis:
-- Android: Kotlin + Google ML Kit Face Detection
-- iOS: Swift + Apple Vision (`VNDetectFaceLandmarksRequest`)
-
-Native imaging/encoding:
-- Android: `Image` (`YUV_420_888`) + `YuvImage` JPEG compression
-- iOS: `CMSampleBuffer`/`CVPixelBuffer` + CoreImage + `UIImage.jpegData`
-
-## 8. Data Produced by the Pipeline
-
-During scan:
-- Real-time guidance telemetry (not persisted as images)
-
-Per captured pose:
-- JPEG file path (`uri`) in app cache/temp storage
-- quality score bundle for diagnostics/selection traceability
-
-## 9. Fallback and Degraded Modes
-
-If native plugin is unavailable:
-- JS detects plugin absence (`isPluginLinked === false`)
-- Hook enters mock mode with synthetic guidance/capture events
-- UI still exercises the full flow for development and demos
-
-## 10. Key Source Files
-
-- `hooks/useFaceDetection.ts`
-- `hooks/useFaceScanFlow.ts`
-- `frameProcessors/detectFace.ts`
-- `types/faceDetection.ts`
+Files:
 - `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/FaceDetectionFrameProcessor.kt`
 - `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/FaceCapturePipeline.kt`
 - `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/FrameQualityScorer.kt`
 - `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/CaptureConfig.kt`
+
+Processing details:
+- ML Kit face detection (`PERFORMANCE_MODE_FAST`, tracking enabled)
+- bounding box + Euler angles extracted from `Face`
+- ROI Y-plane metrics:
+- brightness = mean luma
+- sharpness = Laplacian variance (normalized)
+- stabilization window collects best candidate
+- candidate encoded to JPEG in background and returned as `captured`
+
+## 7. iOS Implementation
+
+Files:
 - `modules/FaceDetection/ios/FaceDetectionFrameProcessor.swift`
 - `modules/FaceDetection/ios/FaceCapturePipeline.swift`
 - `modules/FaceDetection/ios/FrameQualityScorer.swift`
 - `modules/FaceDetection/ios/CaptureConfig.swift`
+
+Processing details:
+- Vision face detection (`VNDetectFaceLandmarksRequest` + `VNSequenceRequestHandler`)
+- `VNFaceObservation` used for bbox/yaw/pitch/roll
+- ROI Y-plane metrics on pixel buffer
+- stabilization + best-frame capture logic mirrors Android behavior
+- JPEG encoded and emitted as `captured`
+
+## 8. Native Result Contract Used by JS
+
+App-level TypeScript contract:
+- `types/faceDetection.ts`
+
+Native frame result union consumed by hooks:
+- `guidance`
+- `faceDetected`
+- `boundingBoxX/Y/Width/Height`
+- `yaw/pitch/roll`
+- `brightness/sharpness`
+- `faceSizeRatio`, `faceCenterX/Y`
+- `stabilizationProgress`
+- `captured`
+- `poseId`
+- `uri` (local file path)
+- `qualityScore`
+- `scores` (`brightness`, `sharpness`, `centeredness`, `poseAccuracy`, `stability`, `faceSize`, `composite`)
+
+## 9. Stabilization and Best-Frame Selection
+
+Native pipeline state machine:
+- `idle`
+- `running(startedAt, best?)`
+- `encoding`
+- back to `idle`
+
+Behavior:
+- readiness checks gate entry to stabilization window
+- default window length: `500ms`
+- only highest composite frame is retained
+- final best frame encoded to JPEG and emitted asynchronously
+
+## 10. Fallback Behavior
+
+When native module is unavailable:
+- `isPluginLinked` is false
+- `useFaceDetection` defaults to mock mode
+- app still runs full UX flow with synthetic guidance/capture
+
+## 11. Technologies in Use
+
+- Expo + React Native + Expo Router
+- TypeScript
+- react-native-vision-camera (frame outputs/worklet integration)
+- react-native-reanimated (`runOnJS`, animated UI values)
+- react-native-nitro-modules (HybridObject runtime)
+- Android: Kotlin + ML Kit
+- iOS: Swift + Vision
+
+## 12. Key Source Files
+
+- `app/(tabs)/index.tsx`
+- `hooks/useFaceDetection.ts`
+- `hooks/useFaceScanFlow.ts`
+- `frameProcessors/detectFace.ts`
+- `types/faceDetection.ts`
+- `modules/FaceDetection/src/specs/FaceDetectionFrameProcessor.nitro.ts`
+- `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/FaceDetectionFrameProcessor.kt`
+- `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/FaceCapturePipeline.kt`
+- `modules/FaceDetection/ios/FaceDetectionFrameProcessor.swift`
+- `modules/FaceDetection/ios/FaceCapturePipeline.swift`

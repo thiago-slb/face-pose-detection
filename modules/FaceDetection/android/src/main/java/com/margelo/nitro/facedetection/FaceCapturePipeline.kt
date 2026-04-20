@@ -63,7 +63,7 @@ class FaceCapturePipeline(private val context: Context) {
     rawSharpness: Float,
     targetPose: String,
   ): Float {
-    synchronized(lock) {
+    return synchronized(lock) {
       val ready = FrameQualityScorer.isReady(
         faceDetected,
         yaw,
@@ -111,7 +111,7 @@ class FaceCapturePipeline(private val context: Context) {
 
       prevYaw = yaw
       prevPitch = pitch
-      return progress
+      progress
     }
   }
 
