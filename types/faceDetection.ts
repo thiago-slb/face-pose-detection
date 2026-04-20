@@ -131,18 +131,19 @@ export interface DetectionThresholds {
 
 export const DEFAULT_THRESHOLDS: DetectionThresholds = {
   pose: {
-    yawLeft:   -15,
-    yawRight:   15,
-    pitchUp:    12,
-    pitchDown: -12,
+    yawLeft:   -22,
+    yawRight:   22,
+    pitchUp:    16,
+    pitchDown: -16,
   },
   distance: {
     tooFar:   0.20,
     tooClose: 0.65,
   },
   alignment: {
-    maxOffsetX: 0.13,
-    maxOffsetY: 0.15,
+    // Balanced strictness: centered should feel intentional, not too permissive.
+    maxOffsetX: 0.20,
+    maxOffsetY: 0.24,
   },
   quality: {
     minBrightness: 0.25,

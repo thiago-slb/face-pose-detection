@@ -128,8 +128,23 @@ enum FrameQualityScorer {
   ) -> Bool {
     guard faceDetected, let target = PoseTargets.byId[targetPose] else { return false }
     let t = CaptureConfig.thresholds
+    let directionalReady: Bool = {
+      switch targetPose {
+      case "left":
+        return yaw <= -t.minYawForSidePose
+      case "right":
+        return yaw >= t.minYawForSidePose
+      case "up":
+        return pitch >= t.minPitchForVerticalPose
+      case "down":
+        return pitch <= -t.minPitchForVerticalPose
+      default:
+        return abs(yaw) <= t.maxYawDeviation && abs(pitch) <= t.maxPitchDeviation
+      }
+    }()
     return abs(yaw   - target.yaw)   <= t.maxYawDeviation     &&
            abs(pitch - target.pitch) <= t.maxPitchDeviation   &&
+           directionalReady                                   &&
            abs(cx - 0.5)            <= t.maxAlignmentOffsetX  &&
            abs(cy - 0.5)            <= t.maxAlignmentOffsetY  &&
            faceSizeRatio            >= t.readinessMinSize      &&

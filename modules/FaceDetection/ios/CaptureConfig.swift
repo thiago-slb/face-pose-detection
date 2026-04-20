@@ -39,6 +39,8 @@ struct CaptureThresholds {
   // Pose readiness gates (same semantics as JS DetectionThresholds)
   var maxYawDeviation:     Float = 15     // degrees from target yaw
   var maxPitchDeviation:   Float = 12     // degrees from target pitch
+  var minYawForSidePose:   Float = 22     // min absolute yaw for left/right
+  var minPitchForVerticalPose: Float = 16 // min absolute pitch for up/down
   var maxAlignmentOffsetX: Float = 0.13   // face center X offset from 0.5
   var maxAlignmentOffsetY: Float = 0.15
   var readinessMinSize:    Float = 0.20

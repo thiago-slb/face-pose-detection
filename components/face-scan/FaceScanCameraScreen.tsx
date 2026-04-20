@@ -97,6 +97,12 @@ function AlignmentBanner({ alignmentStatus }: { alignmentStatus: string }) {
 // ─── Main props ───────────────────────────────────────────────────────────────
 interface Props {
   state: FaceScanState;
+  debugReadout: {
+    cx: number | null;
+    cy: number | null;
+    alignmentStatus: string;
+    faceDetected: boolean;
+  };
   stabilizationAnim: Animated.Value;
   cameraRef: React.RefObject<CameraRef | null>;
   frameOutput: ReturnType<typeof import('react-native-vision-camera').useFrameOutput>;
@@ -107,6 +113,7 @@ interface Props {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export function FaceScanCameraScreen({
   state,
+  debugReadout,
   stabilizationAnim,
   cameraRef,
   frameOutput,
@@ -167,6 +174,22 @@ export function FaceScanCameraScreen({
         <TopBar onCancel={onCancel} currentIndex={state.currentPoseIndex} />
       </View>
 
+      {/* ── Temporary debug readout ── */}
+      <View style={[styles.debugPanel, { top: insets.top + 56 }]}>
+        <Text style={styles.debugText}>
+          {`faceDetected: ${debugReadout.faceDetected ? 'yes' : 'no'}`}
+        </Text>
+        <Text style={styles.debugText}>
+          {`cx: ${debugReadout.cx == null ? 'n/a' : debugReadout.cx.toFixed(3)}`}
+        </Text>
+        <Text style={styles.debugText}>
+          {`cy: ${debugReadout.cy == null ? 'n/a' : debugReadout.cy.toFixed(3)}`}
+        </Text>
+        <Text style={styles.debugText}>
+          {`alignment: ${debugReadout.alignmentStatus}`}
+        </Text>
+      </View>
+
       {/* ── Alignment banner ── */}
       <AlignmentBanner alignmentStatus={state.alignmentStatus} />
 
@@ -225,6 +248,24 @@ const styles = StyleSheet.create({
     zIndex: 99,
   },
   devBannerText: { fontSize: 11, color: '#fff', fontWeight: '600' },
+
+  // Temporary debug panel
+  debugPanel: {
+    position: 'absolute',
+    left: 12,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  debugText: {
+    color: '#D1D5DB',
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
 
   // Top overlay
   topOverlay: {

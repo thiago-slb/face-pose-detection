@@ -28,11 +28,16 @@ export function deriveDistance(faceSizeRatio: number, t: DetectionThresholds): D
 
 // ─── Alignment ───────────────────────────────────────────────────────────────
 export function deriveAlignment(cx: number, cy: number, t: DetectionThresholds): AlignmentStatus {
-  if (cx < 0 || cx > 1 || cy < 0 || cy > 1) return 'partiallyOutside';
-  if (Math.abs(cx - 0.5) > t.alignment.maxOffsetX || Math.abs(cy - 0.5) > t.alignment.maxOffsetY) {
-    return 'offCenter';
-  }
-  return 'centered';
+  // Add tolerance outside [0, 1] to account for normalization/rotation jitter.
+  if (cx < -0.03 || cx > 1.03 || cy < -0.03 || cy > 1.03) return 'partiallyOutside';
+
+  // Use an elliptical zone so "centered" feels closer to the oval guide.
+  const dx = Math.abs(cx - 0.5) / t.alignment.maxOffsetX;
+  const dy = Math.abs(cy - 0.5) / t.alignment.maxOffsetY;
+  const inEllipse = dx * dx + dy * dy <= 0.90;
+
+  if (inEllipse) return 'centered';
+  return 'offCenter';
 }
 
 // ─── Quality ─────────────────────────────────────────────────────────────────

@@ -84,6 +84,12 @@ export interface UseFaceDetectionOptions {
 // ─── Return type ─────────────────────────────────────────────────────────────
 export interface UseFaceDetectionResult {
   guidance: FaceGuidance;
+  debugReadout: {
+    cx: number | null;
+    cy: number | null;
+    alignmentStatus: FaceGuidance['alignmentStatus'];
+    faceDetected: boolean;
+  };
   /** Set when native pipeline delivers a best-frame capture. Clear after consuming. */
   captureResult: NativeCaptureResult | null;
   /** Call after reading captureResult to clear it and re-arm for the next pose. */
@@ -95,7 +101,7 @@ export interface UseFaceDetectionResult {
 // ─── Hook ────────────────────────────────────────────────────────────────────
 export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDetectionResult {
   const {
-    mockMode = !isPluginLinked,
+    mockMode = false,
     thresholds: thresholdOverrides,
     stateUpdateIntervalMs = 100,
     processEveryNFrames   = 2,
@@ -110,7 +116,19 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
   const smoother        = useMemo(() => new FaceDataSmoother(thresholds.emaAlpha), [thresholds]);
   const noFaceCountRef  = useRef(0);
   const latestRef       = useRef<FaceGuidance>(DEFAULT_GUIDANCE);
+  const latestDebugRef  = useRef<UseFaceDetectionResult['debugReadout']>({
+    cx: null,
+    cy: null,
+    alignmentStatus: 'noFace',
+    faceDetected: false,
+  });
   const [guidance, setGuidance]           = useState<FaceGuidance>(DEFAULT_GUIDANCE);
+  const [debugReadout, setDebugReadout]   = useState<UseFaceDetectionResult['debugReadout']>({
+    cx: null,
+    cy: null,
+    alignmentStatus: 'noFace',
+    faceDetected: false,
+  });
   const [captureResult, setCaptureResult] = useState<NativeCaptureResult | null>(null);
 
   const clearCaptureResult = useCallback(() => setCaptureResult(null), []);
@@ -186,10 +204,17 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
   // ── Real frame result handler (JS thread, called via runOnJS) ──
   const handleResult = useCallback((raw: NativeFrameResult) => {
-    if (raw.type === 'captured') {
+    // Native bridges can encode tagged unions either as string literals
+    // ('guidance' | 'captured') or numeric enum values (0 | 1).
+    const kind = (raw as { type?: unknown })?.type;
+    const isCaptured = kind === 'captured' || kind === 1;
+    const isGuidance = kind === 'guidance' || kind === 0;
+
+    if (isCaptured) {
       setCaptureResult(raw);
       return;
     }
+    if (!isGuidance) return;
 
     // type === 'guidance'
     const asRaw: RawFaceDetectionResult | null = raw.faceDetected
@@ -211,9 +236,17 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
     const faceData = applySmoothing(asRaw, smoother, noFaceCountRef.current, thresholds);
     noFaceCountRef.current = faceData.noFaceFrameCount;
-    latestRef.current = {
+    const nextGuidance: FaceGuidance = {
       ...deriveGuidance(faceData, thresholds),
-      stabilizationProgress: raw.stabilizationProgress,
+      stabilizationProgress:
+        typeof raw.stabilizationProgress === 'number' ? raw.stabilizationProgress : 0,
+    };
+    latestRef.current = nextGuidance;
+    latestDebugRef.current = {
+      cx: typeof raw.faceCenterX === 'number' ? raw.faceCenterX : null,
+      cy: typeof raw.faceCenterY === 'number' ? raw.faceCenterY : null,
+      alignmentStatus: nextGuidance.alignmentStatus,
+      faceDetected: raw.faceDetected,
     };
   }, [smoother, thresholds]);
 
@@ -228,6 +261,16 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
           prev.distanceStatus       === next.distanceStatus       &&
           prev.alignmentStatus      === next.alignmentStatus      &&
           prev.stabilizationProgress === next.stabilizationProgress
+        ) return prev;
+        return next;
+      });
+      setDebugReadout(prev => {
+        const next = latestDebugRef.current;
+        if (
+          prev.cx === next.cx &&
+          prev.cy === next.cy &&
+          prev.alignmentStatus === next.alignmentStatus &&
+          prev.faceDetected === next.faceDetected
         ) return prev;
         return next;
       });
@@ -259,6 +302,7 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
   return {
     guidance,
+    debugReadout,
     captureResult,
     clearCaptureResult,
     frameOutput,

@@ -26,6 +26,7 @@ import { POSES, CAPTURE_FLASH_MS } from '../constants/faceScanConfig';
 import type { FaceScanState, CapturedFrame } from '../types/faceScan';
 
 type ScanPhase = 'detecting' | 'stabilizing' | 'captured';
+const STABILIZATION_DROP_GRACE_MS = 350;
 
 const BLANK_FRAMES: (CapturedFrame | null)[] = Array(POSES.length).fill(null);
 
@@ -41,6 +42,7 @@ const INITIAL_STATE: FaceScanState = {
 
 export interface UseFaceScanFlowResult {
   state: FaceScanState;
+  debugReadout: ReturnType<typeof useFaceDetection>['debugReadout'];
   /** Animated.Value [0, 1] driven by native stabilization progress. */
   stabilizationAnim: Animated.Value;
   cameraRef: React.RefObject<CameraRef | null>;
@@ -59,24 +61,35 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
   const poseIndexRef  = useRef(0);
   const capturedRef   = useRef<(CapturedFrame | null)[]>([...BLANK_FRAMES]);
   const isRunningRef  = useRef(false);
+  const lastNonZeroProgressAtRef = useRef<number>(0);
 
   // Current target pose comes from state so React re-renders propagate it to
   // useFaceDetection, which updates the SharedValue fed into the worklet.
   const targetPose = POSES[scanState.currentPoseIndex]?.id ?? 'center';
 
-  const { guidance, captureResult, clearCaptureResult, frameOutput, isNativeLinked } =
+  const { guidance, debugReadout, captureResult, clearCaptureResult, frameOutput, isNativeLinked } =
     useFaceDetection({ ...detectionOpts, targetPose });
 
   // ── Drive stabilization progress bar from native ──────────────────────────
   useEffect(() => {
-    const progress = guidance.stabilizationProgress;
+    const progress =
+      typeof guidance.stabilizationProgress === 'number'
+        ? guidance.stabilizationProgress
+        : 0;
+    const now = Date.now();
 
     if (progress > 0 && phaseRef.current === 'detecting') {
       phaseRef.current = 'stabilizing';
+      lastNonZeroProgressAtRef.current = now;
       setScanState(s => ({ ...s, poseStatus: 'stabilizing' }));
+    } else if (progress > 0) {
+      lastNonZeroProgressAtRef.current = now;
     } else if (progress === 0 && phaseRef.current === 'stabilizing') {
-      phaseRef.current = 'detecting';
-      setScanState(s => ({ ...s, poseStatus: 'detecting' }));
+      const elapsedSinceNonZero = now - lastNonZeroProgressAtRef.current;
+      if (elapsedSinceNonZero >= STABILIZATION_DROP_GRACE_MS) {
+        phaseRef.current = 'detecting';
+        setScanState(s => ({ ...s, poseStatus: 'detecting' }));
+      }
     }
 
     stabilizationAnim.setValue(progress);
@@ -103,6 +116,10 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
 
     const poseIdx = poseIndexRef.current;
     const pose    = POSES[poseIdx];
+    if (captureResult.poseId !== pose.id) {
+      clearCaptureResult();
+      return;
+    }
 
     clearCaptureResult();
 
@@ -163,6 +180,7 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
 
   return {
     state: scanState,
+    debugReadout,
     stabilizationAnim,
     cameraRef,
     frameOutput,

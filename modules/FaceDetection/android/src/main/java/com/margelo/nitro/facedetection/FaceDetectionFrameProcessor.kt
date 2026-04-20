@@ -92,12 +92,18 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     val face = faces.firstOrNull() ?: return noFaceResult(targetPose)
 
     val rect = face.boundingBox
-    val bbX = (rect.left.toDouble() / frameW).coerceIn(0.0, 1.0)
-    val bbY = (rect.top.toDouble() / frameH).coerceIn(0.0, 1.0)
-    val bbW = (rect.width().toDouble() / frameW).coerceIn(0.0, 1.0)
-    val bbH = (rect.height().toDouble() / frameH).coerceIn(0.0, 1.0)
-    val cx = (bbX + bbW / 2).toFloat()
-    val cy = (bbY + bbH / 2).toFloat()
+    val rotation = imageProxy.imageInfo.rotationDegrees
+    val (normW, normH) = if (rotation == 90 || rotation == 270) {
+      frameH.toDouble() to frameW.toDouble()
+    } else {
+      frameW.toDouble() to frameH.toDouble()
+    }
+    val bbX = (rect.left.toDouble() / normW).coerceIn(0.0, 1.0)
+    val bbY = (rect.top.toDouble() / normH).coerceIn(0.0, 1.0)
+    val bbW = (rect.width().toDouble() / normW).coerceIn(0.0, 1.0)
+    val bbH = (rect.height().toDouble() / normH).coerceIn(0.0, 1.0)
+    val cx = (rect.exactCenterX().toDouble() / normW).coerceIn(0.0, 1.0).toFloat()
+    val cy = (rect.exactCenterY().toDouble() / normH).coerceIn(0.0, 1.0).toFloat()
     val faceSizeRatio = bbH.toFloat()
 
     val yaw = face.headEulerAngleY

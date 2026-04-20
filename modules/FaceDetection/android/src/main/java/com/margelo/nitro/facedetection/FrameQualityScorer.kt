@@ -103,8 +103,16 @@ object FrameQualityScorer {
     if (!faceDetected) return false
     val target = PoseTargets.byId[targetPose] ?: return false
     val t = CaptureConfig.thresholds
+    val directionalReady = when (targetPose) {
+      "left" -> yaw <= -t.minYawForSidePose
+      "right" -> yaw >= t.minYawForSidePose
+      "up" -> pitch >= t.minPitchForVerticalPose
+      "down" -> pitch <= -t.minPitchForVerticalPose
+      else -> abs(yaw) <= t.maxYawDeviation && abs(pitch) <= t.maxPitchDeviation
+    }
     return abs(yaw - target.yaw) <= t.maxYawDeviation &&
       abs(pitch - target.pitch) <= t.maxPitchDeviation &&
+      directionalReady &&
       abs(cx - 0.5f) <= t.maxAlignmentOffsetX &&
       abs(cy - 0.5f) <= t.maxAlignmentOffsetY &&
       faceSizeRatio >= t.readinessMinSize &&

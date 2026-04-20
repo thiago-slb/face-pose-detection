@@ -8,6 +8,7 @@ import { FaceScanSuccessScreen } from '@/components/face-scan/FaceScanSuccessScr
 export default function HomeScreen() {
   const {
     state,
+    debugReadout,
     stabilizationAnim,
     cameraRef,
     frameOutput,
@@ -31,6 +32,7 @@ export default function HomeScreen() {
         <StatusBar style="light" hidden />
         <FaceScanCameraScreen
           state={state}
+          debugReadout={debugReadout}
           stabilizationAnim={stabilizationAnim}
           cameraRef={cameraRef}
           frameOutput={frameOutput}
