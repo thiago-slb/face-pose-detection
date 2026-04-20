@@ -1,6 +1,7 @@
 package com.margelo.nitro.facedetection
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
@@ -10,20 +11,9 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
 
-private data class YuvSnapshot(
-  val yBytes: ByteArray,
-  val yRowStride: Int,
-  val yPixelStride: Int,
-  val uBytes: ByteArray,
-  val vBytes: ByteArray,
-  val uvRowStride: Int,
-  val uvPixelStride: Int,
-  val width: Int,
-  val height: Int,
-)
-
+// Stores compressed JPEG bytes — format-agnostic, safe to retain after callback.
 private data class BestCandidate(
-  val snapshot: YuvSnapshot,
+  val jpegBytes: ByteArray,
   val scores: QualityScores,
   val poseId: String,
 )
@@ -153,90 +143,76 @@ class FaceCapturePipeline(private val context: Context) {
     val current = state as? WindowState.Running ?: return
     if (current.best != null && scores.composite <= current.best.scores.composite) return
 
-    val snapshot = snapshotYuv(image) ?: return
+    val jpegBytes = snapshotFrame(image) ?: return
     state = WindowState.Running(
       startedAt = current.startedAt,
-      best = BestCandidate(snapshot, scores, targetPose),
+      best = BestCandidate(jpegBytes, scores, targetPose),
     )
   }
 
-  private fun snapshotYuv(image: ImageProxy): YuvSnapshot? = runCatching {
-    val yPlane = image.planes[0]
-    val uPlane = image.planes[1]
-    val vPlane = image.planes[2]
-
-    fun copy(buf: java.nio.ByteBuffer): ByteArray {
-      val arr = ByteArray(buf.remaining())
-      buf.get(arr)
-      buf.rewind()
-      return arr
+  // Compress the frame to JPEG bytes synchronously while ImageProxy is still valid.
+  // Returns null only on an unrecoverable error — the caller skips this candidate.
+  private fun snapshotFrame(image: ImageProxy): ByteArray? = runCatching {
+    val out = ByteArrayOutputStream()
+    if (image.format == ImageFormat.YUV_420_888) {
+      // Fast path: copy YUV planes, convert to NV21, compress with YuvImage.
+      val nv21 = yuvToNv21(image)
+      YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
+        .compressToJpeg(Rect(0, 0, image.width, image.height), CaptureConfig.jpegQuality, out)
+    } else {
+      // Fallback: any other format (RGBA_8888, PRIVATE, etc.) — convert via Bitmap.
+      val bmp = image.toBitmap()
+      bmp.compress(Bitmap.CompressFormat.JPEG, CaptureConfig.jpegQuality, out)
+      bmp.recycle()
     }
-
-    YuvSnapshot(
-      yBytes = copy(yPlane.buffer),
-      yRowStride = yPlane.rowStride,
-      yPixelStride = yPlane.pixelStride,
-      uBytes = copy(uPlane.buffer),
-      vBytes = copy(vPlane.buffer),
-      uvRowStride = uPlane.rowStride,
-      uvPixelStride = uPlane.pixelStride,
-      width = image.width,
-      height = image.height,
-    )
+    out.toByteArray()
   }.getOrNull()
 
   private fun deliverAsync(best: BestCandidate?, targetPose: String) {
     encoder.submit {
-      val payload = if (best == null) {
-        CapturePayload(
-          poseId = targetPose,
-          uri = null,
-          qualityScore = 0.0,
-          scores = QualityScores(0f, 0f, 0f, 0f, 0f, 0f),
-        )
-      } else {
-        CapturePayload(
-          poseId = targetPose,
-          uri = encodeToJpeg(best.snapshot),
-          qualityScore = best.scores.composite.toDouble(),
-          scores = best.scores,
-        )
-      }
-
+      val uri = best?.let { writeJpeg(it.jpegBytes) }
+      val payload = CapturePayload(
+        poseId       = targetPose,
+        uri          = uri,
+        qualityScore = best?.scores?.composite?.toDouble() ?: 0.0,
+        scores       = best?.scores ?: QualityScores(0f, 0f, 0f, 0f, 0f, 0f),
+      )
       onCapture?.invoke(payload)
       synchronized(lock) { state = WindowState.Idle }
     }
   }
 
-  private fun encodeToJpeg(snap: YuvSnapshot): String? = runCatching {
-    val nv21 = yuvToNv21(snap)
-    val yuvImage = YuvImage(nv21, ImageFormat.NV21, snap.width, snap.height, null)
-    val out = ByteArrayOutputStream()
-    yuvImage.compressToJpeg(Rect(0, 0, snap.width, snap.height), CaptureConfig.jpegQuality, out)
+  private fun writeJpeg(bytes: ByteArray): String? = runCatching {
     val file = File(context.cacheDir, "facescan_${UUID.randomUUID()}.jpg")
-    file.writeBytes(out.toByteArray())
+    file.writeBytes(bytes)
     file.absolutePath
   }.getOrNull()
 
-  private fun yuvToNv21(snap: YuvSnapshot): ByteArray {
-    val frameSize = snap.width * snap.height
+  private fun yuvToNv21(image: ImageProxy): ByteArray {
+    val yPlane = image.planes[0]
+    val uPlane = image.planes[1]
+    val vPlane = image.planes[2]
+    val w = image.width; val h = image.height
+    val frameSize = w * h
     val nv21 = ByteArray(frameSize + frameSize / 2)
 
-    for (row in 0 until snap.height) {
-      for (col in 0 until snap.width) {
-        nv21[row * snap.width + col] = snap.yBytes[row * snap.yRowStride + col * snap.yPixelStride]
+    val yBuf = yPlane.buffer; val yRowStride = yPlane.rowStride; val yPixStride = yPlane.pixelStride
+    for (row in 0 until h) {
+      for (col in 0 until w) {
+        nv21[row * w + col] = yBuf.get(row * yRowStride + col * yPixStride)
       }
     }
 
+    val vBuf = vPlane.buffer; val uBuf = uPlane.buffer
+    val uvRowStride = vPlane.rowStride; val uvPixStride = vPlane.pixelStride
     var uvIdx = frameSize
-    for (row in 0 until snap.height / 2) {
-      for (col in 0 until snap.width / 2) {
-        val planeIdx = row * snap.uvRowStride + col * snap.uvPixelStride
-        nv21[uvIdx++] = snap.vBytes[planeIdx]
-        nv21[uvIdx++] = snap.uBytes[planeIdx]
+    for (row in 0 until h / 2) {
+      for (col in 0 until w / 2) {
+        val pi = row * uvRowStride + col * uvPixStride
+        nv21[uvIdx++] = vBuf.get(pi)  // NV21 = V before U
+        nv21[uvIdx++] = uBuf.get(pi)
       }
     }
-
     return nv21
   }
 }

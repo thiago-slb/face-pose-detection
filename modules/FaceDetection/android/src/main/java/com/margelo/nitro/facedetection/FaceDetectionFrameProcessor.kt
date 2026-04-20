@@ -1,5 +1,6 @@
 package com.margelo.nitro.facedetection
 
+import android.graphics.ImageFormat
 import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -62,11 +63,22 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     }
 
     val imageProxy = (frame as? NativeFrame)?.image ?: return noFaceResult(targetPose)
-    val mediaImage = imageProxy.image ?: return noFaceResult(args.targetPose)
     val frameW = imageProxy.width.toFloat()
     val frameH = imageProxy.height.toFloat()
 
-    val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+    // ML Kit's fromMediaImage only accepts YUV_420_888 or JPEG.
+    // For RGBA_8888 or any other format produced by HybridFrameOutput, fall back
+    // to fromBitmap so detection always works regardless of camera output format.
+    val mediaImage = imageProxy.image
+    val inputImage = try {
+      if (mediaImage != null && imageProxy.format == ImageFormat.YUV_420_888) {
+        InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+      } else {
+        InputImage.fromBitmap(imageProxy.toBitmap(), imageProxy.imageInfo.rotationDegrees)
+      }
+    } catch (_: Exception) {
+      return noFaceResult(targetPose)
+    }
     val faces: List<Face> = try {
       com.google.android.gms.tasks.Tasks.await(
         detector.process(inputImage),
@@ -145,6 +157,9 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     bbW: Double,
     bbH: Double,
   ): Pair<Double, Double> {
+    // Y-plane analysis is only valid for YUV_420_888.
+    // For other formats return neutral values — quality never blocks the flow.
+    if (image.format != ImageFormat.YUV_420_888) return 0.5 to 0.5
     val yPlane = image.planes[0]
     val yBuf = yPlane.buffer
     val rowStride = yPlane.rowStride

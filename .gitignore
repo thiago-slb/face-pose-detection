@@ -47,3 +47,4 @@ app-example
 /modules/*/android/.cxx/
 /modules/*/ios/build/
 /modules/*/nitrogen/generated/
+/modules/*/android/.gradle
