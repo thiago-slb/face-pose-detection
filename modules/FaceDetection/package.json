@@ -1,0 +1,21 @@
+{
+  "name": "react-native-face-detection",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "source": "src/index.ts",
+  "files": [
+    "src",
+    "nitro.json",
+    "nitrogen",
+    "android"
+  ],
+  "scripts": {
+    "specs": "nitrogen"
+  },
+  "peerDependencies": {
+    "react-native-nitro-modules": "*",
+    "react-native-vision-camera": "*"
+  }
+}
