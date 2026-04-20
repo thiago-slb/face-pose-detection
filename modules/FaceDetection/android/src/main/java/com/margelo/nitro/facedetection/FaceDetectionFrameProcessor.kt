@@ -117,7 +117,8 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     val cy = (rect.exactCenterY().toDouble() / normH).coerceIn(0.0, 1.0).toFloat()
     val faceSizeRatio = bbH.toFloat()
 
-    val yaw = face.headEulerAngleY
+    val rawYaw = face.headEulerAngleY
+    val yaw = if (CaptureConfig.invertYawForFrontCamera) -rawYaw else rawYaw
     val pitch = -face.headEulerAngleX
     val roll = face.headEulerAngleZ.toDouble()
 

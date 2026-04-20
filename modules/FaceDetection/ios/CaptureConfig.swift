@@ -37,7 +37,7 @@ struct CaptureThresholds {
   var minFaceSizeRatio:    Float = 0.15   // face height / frame height
   var maxFaceSizeRatio:    Float = 0.72
   // Pose readiness gates (same semantics as JS DetectionThresholds)
-  var maxYawDeviation:     Float = 15     // degrees from target yaw
+  var maxYawDeviation:     Float = 20     // degrees from target yaw
   var maxPitchDeviation:   Float = 12     // degrees from target pitch
   var minYawForSidePose:   Float = 22     // min absolute yaw for left/right
   var minPitchForVerticalPose: Float = 16 // min absolute pitch for up/down
@@ -51,6 +51,9 @@ struct CaptureThresholds {
 enum CaptureConfig {
   static var weights:              CaptureWeights    = .init()
   static var thresholds:           CaptureThresholds = .init()
+  // Normalize yaw to user-facing semantics for mirrored front-camera UX.
+  // true: positive yaw means user's RIGHT turn.
+  static var invertYawForFrontCamera: Bool = true
   /// Milliseconds the stabilization window stays open collecting candidates.
   static var stabilizationWindowMs: Int    = 500
   /// JPEG compression quality for saved best frames (0-1).

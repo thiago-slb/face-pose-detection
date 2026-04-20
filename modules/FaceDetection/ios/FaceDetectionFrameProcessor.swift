@@ -76,7 +76,8 @@ class FaceDetectionFrameProcessor: HybridFaceDetectionFrameProcessorSpec {
     let cy = Float(bbY + bbH / 2.0)
     let faceSizeRatio = Float(bbH)
 
-    let yaw = Float(obs.yaw.map { -$0.doubleValue * 180.0 / .pi } ?? 0.0)
+    let rawYaw = Float(obs.yaw.map { -$0.doubleValue * 180.0 / .pi } ?? 0.0)
+    let yaw = CaptureConfig.invertYawForFrontCamera ? -rawYaw : rawYaw
     let pitch = Float(obs.pitch.map { $0.doubleValue * 180.0 / .pi } ?? 0.0)
     let roll = obs.roll.map { $0.doubleValue * 180.0 / .pi } ?? 0.0
 

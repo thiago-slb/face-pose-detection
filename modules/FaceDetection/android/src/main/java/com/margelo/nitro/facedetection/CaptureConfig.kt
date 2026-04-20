@@ -28,7 +28,7 @@ data class CaptureThresholds(
   val minCenteredness: Float = 0.65f,
   val minFaceSizeRatio: Float = 0.15f,
   val maxFaceSizeRatio: Float = 0.72f,
-  val maxYawDeviation: Float = 15f,
+  val maxYawDeviation: Float = 20f,
   val maxPitchDeviation: Float = 12f,
   val minYawForSidePose: Float = 22f,
   val minPitchForVerticalPose: Float = 16f,
@@ -41,6 +41,9 @@ data class CaptureThresholds(
 object CaptureConfig {
   var weights: CaptureWeights = CaptureWeights()
   var thresholds: CaptureThresholds = CaptureThresholds()
+  // Normalize yaw to user-facing semantics for mirrored front-camera UX.
+  // true: positive yaw means user's RIGHT turn.
+  var invertYawForFrontCamera: Boolean = true
   var stabilizationWindowMs: Long = 500L
   var jpegQuality: Int = 88
   var sharpnessBaseline: Double = 300.0
