@@ -82,7 +82,7 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     val faces: List<Face> = try {
       com.google.android.gms.tasks.Tasks.await(
         detector.process(inputImage),
-        50,
+        150,
         java.util.concurrent.TimeUnit.MILLISECONDS,
       )
     } catch (_: Exception) {

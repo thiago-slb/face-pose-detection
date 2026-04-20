@@ -251,7 +251,11 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     frame.dispose();
   }, [handleResult, frameSkip, processEveryNFrames, targetPoseShared]);
 
-  const frameOutput = useFrameOutput({ onFrame });
+  const frameOutput = useFrameOutput({
+    onFrame,
+    // Ensure Android ML Kit always receives a compatible format.
+    pixelFormat: 'yuv',
+  });
 
   return {
     guidance,
