@@ -119,7 +119,9 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
 
     val rawYaw = face.headEulerAngleY
     val yaw = if (CaptureConfig.invertYawForFrontCamera) -rawYaw else rawYaw
-    val pitch = -face.headEulerAngleX
+    // Normalize pitch to user-facing semantics: positive = UP, negative = DOWN.
+    // ML Kit's headEulerAngleX already follows this convention on Android.
+    val pitch = face.headEulerAngleX
     val roll = face.headEulerAngleZ.toDouble()
 
     val (rawBrightness, rawSharpness) = qualityMetrics(
