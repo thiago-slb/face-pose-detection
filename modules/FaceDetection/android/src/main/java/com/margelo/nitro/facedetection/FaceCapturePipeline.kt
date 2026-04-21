@@ -35,7 +35,12 @@ class FaceCapturePipeline(private val context: Context) {
   private var state: WindowState = WindowState.Idle
   private var prevYaw = 0f
   private var prevPitch = 0f
+  private var notReadyStreak = 0
   private val lock = Any()
+
+  // Allow up to this many consecutive not-ready frames before resetting the window.
+  // Handles brief ML Kit detection gaps on profile poses without killing the window.
+  private val NOT_READY_GRACE_FRAMES = 6
 
   private val encoder = Executors.newSingleThreadExecutor()
 
@@ -77,9 +82,18 @@ class FaceCapturePipeline(private val context: Context) {
 
         is WindowState.Running -> {
           if (!ready) {
-            state = WindowState.Idle
-            return@synchronized 0f
+            notReadyStreak++
+            if (notReadyStreak >= NOT_READY_GRACE_FRAMES) {
+              state = WindowState.Idle
+              notReadyStreak = 0
+              return@synchronized 0f
+            }
+            // Brief gap — keep the window alive and report current progress
+            val elapsed = System.currentTimeMillis() - s.startedAt
+            return@synchronized (elapsed.toFloat() / CaptureConfig.stabilizationWindowMs).coerceIn(0f, 1f)
           }
+          notReadyStreak = 0
+
           if (image != null) {
             tryCollect(image, yaw, pitch, cx, cy, faceSizeRatio, rawBrightness, rawSharpness, targetPose)
           }
@@ -110,6 +124,7 @@ class FaceCapturePipeline(private val context: Context) {
       state = WindowState.Idle
       prevYaw = 0f
       prevPitch = 0f
+      notReadyStreak = 0
     }
   }
 

@@ -83,7 +83,6 @@ object FrameQualityScorer {
     val t = CaptureConfig.thresholds
     return rawBrightness >= t.minBrightness &&
       rawBrightness <= t.maxBrightness &&
-      rawSharpness >= t.minSharpness &&
       centeredness >= t.minCenteredness &&
       faceSizeRatio >= t.minFaceSizeRatio &&
       faceSizeRatio <= t.maxFaceSizeRatio
@@ -116,9 +115,6 @@ object FrameQualityScorer {
       abs(cx - 0.5f) <= t.maxAlignmentOffsetX &&
       abs(cy - 0.5f) <= t.maxAlignmentOffsetY &&
       faceSizeRatio >= t.readinessMinSize &&
-      faceSizeRatio <= t.readinessMaxSize &&
-      rawBrightness >= t.minBrightness &&
-      rawBrightness <= t.maxBrightness &&
-      rawSharpness >= t.minSharpness
+      faceSizeRatio <= t.readinessMaxSize
   }
 }

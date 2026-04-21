@@ -35,6 +35,8 @@ final class FaceCapturePipeline {
   private var windowState: WindowState = .idle
   private var prevYaw:   Float = 0
   private var prevPitch: Float = 0
+  private var notReadyStreak = 0
+  private let NOT_READY_GRACE_FRAMES = 6
   private let lock = NSLock()
   private let encodeQueue = DispatchQueue(label: "com.pocfacescan.encode", qos: .userInitiated)
 
@@ -88,10 +90,19 @@ final class FaceCapturePipeline {
       return 0
 
     case .running(let startedAt, _):
-      guard ready else {
-        windowState = .idle
-        return 0
+      if !ready {
+        notReadyStreak += 1
+        if notReadyStreak >= NOT_READY_GRACE_FRAMES {
+          windowState = .idle
+          notReadyStreak = 0
+          return 0
+        }
+        // Brief gap — keep the window alive and report current progress
+        let windowSec = Double(CaptureConfig.stabilizationWindowMs) / 1000.0
+        let elapsed = CFAbsoluteTimeGetCurrent() - startedAt
+        return Float(min(elapsed / windowSec, 1.0))
       }
+      notReadyStreak = 0
 
       tryCollect(sampleBuffer: sampleBuffer,
                  yaw: yaw, pitch: pitch, cx: cx, cy: cy,
@@ -119,6 +130,7 @@ final class FaceCapturePipeline {
     lock.lock()
     windowState = .idle
     prevYaw = 0; prevPitch = 0
+    notReadyStreak = 0
     lock.unlock()
   }
 

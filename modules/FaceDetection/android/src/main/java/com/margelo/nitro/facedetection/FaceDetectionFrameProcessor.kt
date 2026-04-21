@@ -93,7 +93,7 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     val faces: List<Face> = try {
       com.google.android.gms.tasks.Tasks.await(
         detector.process(inputImage),
-        150,
+        300,
         java.util.concurrent.TimeUnit.MILLISECONDS,
       )
     } catch (_: Exception) {
@@ -175,9 +175,13 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     bbW: Double,
     bbH: Double,
   ): Pair<Double, Double> {
-    // Y-plane analysis is only valid for YUV_420_888.
-    // For other formats return neutral values — quality never blocks the flow.
+    // Y-plane analysis requires YUV_420_888 and rotation=0/180.
+    // For rotated frames (portrait phones: rotation=90/270) the bounding box is in
+    // display-space but Y-plane indices are in sensor-space — axes are transposed,
+    // so we'd read from the wrong region. Return neutral values instead.
     if (image.format != ImageFormat.YUV_420_888) return 0.5 to 0.5
+    val rotation = image.imageInfo.rotationDegrees
+    if (rotation == 90 || rotation == 270) return 0.5 to 0.5
     val yPlane = image.planes[0]
     val yBuf = yPlane.buffer
     val rowStride = yPlane.rowStride

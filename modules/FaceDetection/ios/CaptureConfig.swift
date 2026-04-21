@@ -43,8 +43,8 @@ struct CaptureThresholds {
   var minPitchForVerticalPose: Float = 16 // min absolute pitch for up/down
   var maxAlignmentOffsetX: Float = 0.13   // face center X offset from 0.5
   var maxAlignmentOffsetY: Float = 0.15
-  var readinessMinSize:    Float = 0.20
-  var readinessMaxSize:    Float = 0.65
+  var readinessMinSize:    Float = 0.15
+  var readinessMaxSize:    Float = 0.80
 }
 
 // ─── Global config ────────────────────────────────────────────────────────────

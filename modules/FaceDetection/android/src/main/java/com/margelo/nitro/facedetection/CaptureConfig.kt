@@ -34,8 +34,8 @@ data class CaptureThresholds(
   val minPitchForVerticalPose: Float = 16f,
   val maxAlignmentOffsetX: Float = 0.13f,
   val maxAlignmentOffsetY: Float = 0.15f,
-  val readinessMinSize: Float = 0.20f,
-  val readinessMaxSize: Float = 0.65f,
+  val readinessMinSize: Float = 0.15f,
+  val readinessMaxSize: Float = 0.80f,
 )
 
 object CaptureConfig {
