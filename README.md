@@ -64,7 +64,7 @@ File: `hooks/useFaceDetection.ts`
 
 Responsibilities:
 - runs frame processing with throttling (`processEveryNFrames`, default 2)
-- forwards `targetPose` via shared value into worklet
+- forwards current `targetPose` directly from the worklet closure into native `processFrame(...)`
 - maps native guidance to app guidance model
 - handles native captured events
 - supports mock mode (`mockMode = !isPluginLinked` by default)
@@ -109,6 +109,7 @@ Files:
 Processing details:
 - ML Kit face detection (`PERFORMANCE_MODE_FAST`, tracking enabled)
 - bounding box + Euler angles extracted from `Face`
+- pitch normalization uses user-facing semantics (`+` = head up, `-` = head down)
 - ROI Y-plane metrics:
 - brightness = mean luma
 - sharpness = Laplacian variance (normalized)
@@ -169,6 +170,12 @@ When native module is unavailable:
 - `isPluginLinked` is false
 - `useFaceDetection` defaults to mock mode
 - app still runs full UX flow with synthetic guidance/capture
+
+## 10.1 Calibration/Debug Notes
+
+- The scan camera screen includes a temporary debug panel showing pose/quality/alignment gates used by detection/capture.
+- If UI pose and capture pose disagree, verify that the native `targetPose` passed into `processFrame(...)` matches the current step.
+- If vertical pose feels inverted on a platform/device, check that native pitch sign convention remains `+up / -down` before tuning thresholds.
 
 ## 11. Technologies in Use
 
