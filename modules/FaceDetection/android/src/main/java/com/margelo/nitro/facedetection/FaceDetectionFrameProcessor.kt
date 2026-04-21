@@ -198,7 +198,7 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     val yaw = if (CaptureConfig.invertYawForFrontCamera) -rawYaw else rawYaw
     val pitch = face.headEulerAngleX
     val roll = face.headEulerAngleZ.toDouble()
-    val (brightness, sharpness) = qualityMetricsFromBitmap(bitmap, rect)
+    val (brightness, sharpness) = qualityMetricsFromBitmap(bitmap, rect, rotation)
 
     return DetectionSnapshot(
       bbX = bbX,
@@ -216,15 +216,42 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     )
   }
 
-  private fun qualityMetricsFromBitmap(bitmap: android.graphics.Bitmap, rect: Rect): Pair<Double, Double> {
-    val x0 = max(1, rect.left.coerceAtLeast(0))
-    val y0 = max(1, rect.top.coerceAtLeast(0))
-    val x1 = min(bitmap.width - 2, rect.right.coerceAtMost(bitmap.width))
-    val y1 = min(bitmap.height - 2, rect.bottom.coerceAtMost(bitmap.height))
+  private fun qualityMetricsFromBitmap(
+    bitmap: android.graphics.Bitmap,
+    rect: Rect,
+    rotation: Int,
+  ): Pair<Double, Double> {
+    val normalizedRotation = ((rotation % 360) + 360) % 360
+    val rotatedWidth = if (normalizedRotation == 90 || normalizedRotation == 270) bitmap.height else bitmap.width
+    val rotatedHeight = if (normalizedRotation == 90 || normalizedRotation == 270) bitmap.width else bitmap.height
+
+    val x0 = max(1, rect.left.coerceIn(0, rotatedWidth - 1))
+    val y0 = max(1, rect.top.coerceIn(0, rotatedHeight - 1))
+    val x1 = min(rotatedWidth - 2, rect.right.coerceIn(0, rotatedWidth))
+    val y1 = min(rotatedHeight - 2, rect.bottom.coerceIn(0, rotatedHeight))
     if (x1 <= x0 || y1 <= y0) return 0.5 to 0.0
 
-    fun lumaAt(x: Int, y: Int): Int {
-      val color = bitmap.getPixel(x, y)
+    fun colorInRotatedSpace(xRot: Int, yRot: Int): Int {
+      val (x, y) = when (normalizedRotation) {
+        90 -> {
+          // Inverse of 90° clockwise rotation.
+          yRot to (bitmap.height - 1 - xRot)
+        }
+        180 -> {
+          // Inverse of 180° rotation.
+          (bitmap.width - 1 - xRot) to (bitmap.height - 1 - yRot)
+        }
+        270 -> {
+          // Inverse of 270° clockwise rotation.
+          (bitmap.width - 1 - yRot) to xRot
+        }
+        else -> xRot to yRot
+      }
+      return bitmap.getPixel(x, y)
+    }
+
+    fun lumaAt(xRot: Int, yRot: Int): Int {
+      val color = colorInRotatedSpace(xRot, yRot)
       val r = (color shr 16) and 0xFF
       val g = (color shr 8) and 0xFF
       val b = color and 0xFF

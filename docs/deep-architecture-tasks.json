@@ -30,10 +30,11 @@
       "area": "Android",
       "priority": 2,
       "sourceRank": 2,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Handle 90/270 rotation mapping for Y-plane sampling"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-21",
+      "notes": "Made bitmap ROI quality sampling rotation-aware by mapping rotated-space ROI coordinates back to source bitmap coordinates for 0/90/180/270"
     },
     {
       "id": "T03",
