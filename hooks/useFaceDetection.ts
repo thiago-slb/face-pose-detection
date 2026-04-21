@@ -26,6 +26,7 @@ import {
   DEFAULT_THRESHOLDS,
   type DetectionThresholds,
   type FaceGuidance,
+  type NativeGuidanceResult,
   type NativeCaptureResult,
   type NativeFrameResult,
   type RawFaceDetectionResult,
@@ -89,6 +90,10 @@ export interface UseFaceDetectionResult {
     cy: number | null;
     yaw: number | null;
     pitch: number | null;
+    roll: number | null;
+    brightness: number | null;
+    sharpness: number | null;
+    faceSizeRatio: number | null;
     detectedPose: FaceGuidance['detectedPose'];
     stabilizationProgress: number;
     alignmentStatus: FaceGuidance['alignmentStatus'];
@@ -128,6 +133,10 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     cy: null,
     yaw: null,
     pitch: null,
+    roll: null,
+    brightness: null,
+    sharpness: null,
+    faceSizeRatio: null,
     detectedPose: 'center',
     stabilizationProgress: 0,
     alignmentStatus: 'noFace',
@@ -142,6 +151,10 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     cy: null,
     yaw: null,
     pitch: null,
+    roll: null,
+    brightness: null,
+    sharpness: null,
+    faceSizeRatio: null,
     detectedPose: 'center',
     stabilizationProgress: 0,
     alignmentStatus: 'noFace',
@@ -242,22 +255,23 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
       return;
     }
     if (!isGuidance) return;
+    const guidanceRaw = raw as NativeGuidanceResult;
 
     // type === 'guidance'
-    const asRaw: RawFaceDetectionResult | null = raw.faceDetected
+    const asRaw: RawFaceDetectionResult | null = guidanceRaw.faceDetected
       ? {
           faceDetected: true,
-          boundingBox:  raw.boundingBoxX != null ? {
-            x:      raw.boundingBoxX,
-            y:      raw.boundingBoxY!,
-            width:  raw.boundingBoxWidth!,
-            height: raw.boundingBoxHeight!,
+          boundingBox:  guidanceRaw.boundingBoxX != null ? {
+            x:      guidanceRaw.boundingBoxX,
+            y:      guidanceRaw.boundingBoxY!,
+            width:  guidanceRaw.boundingBoxWidth!,
+            height: guidanceRaw.boundingBoxHeight!,
           } : undefined,
-          yaw:        raw.yaw,
-          pitch:      raw.pitch,
-          roll:       raw.roll,
-          brightness: raw.brightness,
-          sharpness:  raw.sharpness,
+          yaw:        guidanceRaw.yaw,
+          pitch:      guidanceRaw.pitch,
+          roll:       guidanceRaw.roll,
+          brightness: guidanceRaw.brightness,
+          sharpness:  guidanceRaw.sharpness,
         }
       : { faceDetected: false };
 
@@ -266,19 +280,23 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     const nextGuidance: FaceGuidance = {
       ...deriveGuidance(faceData, thresholds),
       stabilizationProgress:
-        typeof raw.stabilizationProgress === 'number' ? raw.stabilizationProgress : 0,
+        typeof guidanceRaw.stabilizationProgress === 'number' ? guidanceRaw.stabilizationProgress : 0,
     };
     latestRef.current = nextGuidance;
     latestDebugRef.current = {
       ...latestDebugRef.current,
-      cx: typeof raw.faceCenterX === 'number' ? raw.faceCenterX : null,
-      cy: typeof raw.faceCenterY === 'number' ? raw.faceCenterY : null,
-      yaw: typeof raw.yaw === 'number' ? raw.yaw : null,
-      pitch: typeof raw.pitch === 'number' ? raw.pitch : null,
+      cx: typeof guidanceRaw.faceCenterX === 'number' ? guidanceRaw.faceCenterX : null,
+      cy: typeof guidanceRaw.faceCenterY === 'number' ? guidanceRaw.faceCenterY : null,
+      yaw: typeof guidanceRaw.yaw === 'number' ? guidanceRaw.yaw : null,
+      pitch: typeof guidanceRaw.pitch === 'number' ? guidanceRaw.pitch : null,
+      roll: typeof guidanceRaw.roll === 'number' ? guidanceRaw.roll : null,
+      brightness: typeof guidanceRaw.brightness === 'number' ? guidanceRaw.brightness : null,
+      sharpness: typeof guidanceRaw.sharpness === 'number' ? guidanceRaw.sharpness : null,
+      faceSizeRatio: typeof guidanceRaw.faceSizeRatio === 'number' ? guidanceRaw.faceSizeRatio : null,
       detectedPose: nextGuidance.detectedPose,
       stabilizationProgress: nextGuidance.stabilizationProgress,
       alignmentStatus: nextGuidance.alignmentStatus,
-      faceDetected: raw.faceDetected,
+      faceDetected: guidanceRaw.faceDetected,
       lastGuidanceAtMs: Date.now(),
     };
   }, [smoother, thresholds]);
@@ -304,6 +322,10 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
           prev.cy === next.cy &&
           prev.yaw === next.yaw &&
           prev.pitch === next.pitch &&
+          prev.roll === next.roll &&
+          prev.brightness === next.brightness &&
+          prev.sharpness === next.sharpness &&
+          prev.faceSizeRatio === next.faceSizeRatio &&
           prev.detectedPose === next.detectedPose &&
           prev.stabilizationProgress === next.stabilizationProgress &&
           prev.alignmentStatus === next.alignmentStatus &&

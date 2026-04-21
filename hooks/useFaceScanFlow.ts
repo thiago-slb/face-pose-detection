@@ -27,6 +27,26 @@ import type { FaceScanState, CapturedFrame } from '../types/faceScan';
 
 type ScanPhase = 'detecting' | 'stabilizing' | 'captured';
 const STABILIZATION_DROP_GRACE_MS = 350;
+const NATIVE_DEBUG_THRESHOLDS = {
+  maxYawDeviation: 20,
+  maxPitchDeviation: 12,
+  minYawForSidePose: 22,
+  minPitchForVerticalPose: 16,
+  maxAlignmentOffsetX: 0.13,
+  maxAlignmentOffsetY: 0.15,
+  readinessMinSize: 0.15,
+  readinessMaxSize: 0.80,
+  minBrightness: 0.20,
+  maxBrightness: 0.88,
+  minSharpness: 0.12,
+} as const;
+const TARGET_POSE_ANGLES: Record<string, { yaw: number; pitch: number }> = {
+  center: { yaw: 0, pitch: 0 },
+  left: { yaw: -30, pitch: 0 },
+  right: { yaw: 30, pitch: 0 },
+  up: { yaw: 0, pitch: 20 },
+  down: { yaw: 0, pitch: -20 },
+};
 
 const BLANK_FRAMES: (CapturedFrame | null)[] = Array(POSES.length).fill(null);
 
@@ -55,6 +75,22 @@ export interface UseFaceScanFlowResult {
       hasUri: boolean | null;
       atMs: number | null;
       outcome: 'none' | 'missing_uri' | 'pose_mismatch' | 'stale_previous_pose' | 'duplicate_for_current_pose' | 'accepted';
+    };
+    validation: {
+      poseMatch: boolean;
+      faceDetected: boolean;
+      distanceGood: boolean;
+      alignmentCentered: boolean;
+      qualityGood: boolean;
+      yawWithinWindow: boolean;
+      pitchWithinWindow: boolean;
+      directionalReady: boolean;
+      alignmentXReady: boolean;
+      alignmentYReady: boolean;
+      faceSizeReady: boolean;
+      brightnessReady: boolean;
+      sharpnessReady: boolean;
+      guidanceReady: boolean;
     };
   };
   /** Animated.Value [0, 1] driven by native stabilization progress. */
@@ -323,6 +359,74 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
           ? Date.now() - lastNonZeroProgressAtRef.current
           : null,
       lastCaptureEvent,
+      validation: {
+        poseMatch: guidance.detectedPose === targetPose,
+        faceDetected: guidance.faceDetected,
+        distanceGood: guidance.distanceStatus === 'good',
+        alignmentCentered: guidance.alignmentStatus === 'centered',
+        qualityGood: guidance.qualityStatus === 'good',
+        yawWithinWindow: (() => {
+          const yaw = debugReadout.yaw;
+          const target = TARGET_POSE_ANGLES[targetPose] ?? TARGET_POSE_ANGLES.center;
+          if (yaw == null) return false;
+          return Math.abs(yaw - target.yaw) <= NATIVE_DEBUG_THRESHOLDS.maxYawDeviation;
+        })(),
+        pitchWithinWindow: (() => {
+          const pitch = debugReadout.pitch;
+          const target = TARGET_POSE_ANGLES[targetPose] ?? TARGET_POSE_ANGLES.center;
+          if (pitch == null) return false;
+          return Math.abs(pitch - target.pitch) <= NATIVE_DEBUG_THRESHOLDS.maxPitchDeviation;
+        })(),
+        directionalReady: (() => {
+          const yaw = debugReadout.yaw;
+          const pitch = debugReadout.pitch;
+          if (yaw == null || pitch == null) return false;
+          if (targetPose === 'left') return yaw <= -NATIVE_DEBUG_THRESHOLDS.minYawForSidePose;
+          if (targetPose === 'right') return yaw >= NATIVE_DEBUG_THRESHOLDS.minYawForSidePose;
+          if (targetPose === 'up') return pitch >= NATIVE_DEBUG_THRESHOLDS.minPitchForVerticalPose;
+          if (targetPose === 'down') return pitch <= -NATIVE_DEBUG_THRESHOLDS.minPitchForVerticalPose;
+          return (
+            Math.abs(yaw) <= NATIVE_DEBUG_THRESHOLDS.maxYawDeviation &&
+            Math.abs(pitch) <= NATIVE_DEBUG_THRESHOLDS.maxPitchDeviation
+          );
+        })(),
+        alignmentXReady: (() => {
+          const cx = debugReadout.cx;
+          if (cx == null) return false;
+          return Math.abs(cx - 0.5) <= NATIVE_DEBUG_THRESHOLDS.maxAlignmentOffsetX;
+        })(),
+        alignmentYReady: (() => {
+          const cy = debugReadout.cy;
+          if (cy == null) return false;
+          return Math.abs(cy - 0.5) <= NATIVE_DEBUG_THRESHOLDS.maxAlignmentOffsetY;
+        })(),
+        faceSizeReady: (() => {
+          const ratio = debugReadout.faceSizeRatio;
+          if (ratio == null) return false;
+          return (
+            ratio >= NATIVE_DEBUG_THRESHOLDS.readinessMinSize &&
+            ratio <= NATIVE_DEBUG_THRESHOLDS.readinessMaxSize
+          );
+        })(),
+        brightnessReady: (() => {
+          const value = debugReadout.brightness;
+          if (value == null) return false;
+          return (
+            value >= NATIVE_DEBUG_THRESHOLDS.minBrightness &&
+            value <= NATIVE_DEBUG_THRESHOLDS.maxBrightness
+          );
+        })(),
+        sharpnessReady: (() => {
+          const value = debugReadout.sharpness;
+          if (value == null) return false;
+          return value >= NATIVE_DEBUG_THRESHOLDS.minSharpness;
+        })(),
+        guidanceReady:
+          guidance.faceDetected &&
+          guidance.distanceStatus === 'good' &&
+          guidance.alignmentStatus === 'centered' &&
+          guidance.qualityStatus === 'good',
+      },
     },
     stabilizationAnim,
     cameraRef,

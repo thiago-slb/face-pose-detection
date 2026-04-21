@@ -122,6 +122,33 @@ function AlignmentBanner({ alignmentStatus }: { alignmentStatus: string }) {
   );
 }
 
+function DebugBadge({ ok }: { ok: boolean }) {
+  return (
+    <View style={[styles.debugBadge, ok ? styles.debugBadgeOk : styles.debugBadgeBad]}>
+      <Text style={styles.debugBadgeText}>{ok ? 'OK' : 'NO'}</Text>
+    </View>
+  );
+}
+
+function DebugGateRow({
+  label,
+  ok,
+  value,
+}: {
+  label: string;
+  ok: boolean;
+  value?: string;
+}) {
+  return (
+    <View style={styles.debugGateRow}>
+      <DebugBadge ok={ok} />
+      <Text style={styles.debugText}>
+        {value == null ? label : `${label}: ${value}`}
+      </Text>
+    </View>
+  );
+}
+
 // ─── Main props ───────────────────────────────────────────────────────────────
 interface Props {
   state: FaceScanState;
@@ -130,6 +157,10 @@ interface Props {
     cy: number | null;
     yaw: number | null;
     pitch: number | null;
+    roll: number | null;
+    brightness: number | null;
+    sharpness: number | null;
+    faceSizeRatio: number | null;
     detectedPose: string;
     stabilizationProgress: number;
     alignmentStatus: string;
@@ -155,6 +186,22 @@ interface Props {
         | "stale_previous_pose"
         | "duplicate_for_current_pose"
         | "accepted";
+    };
+    validation: {
+      poseMatch: boolean;
+      faceDetected: boolean;
+      distanceGood: boolean;
+      alignmentCentered: boolean;
+      qualityGood: boolean;
+      yawWithinWindow: boolean;
+      pitchWithinWindow: boolean;
+      directionalReady: boolean;
+      alignmentXReady: boolean;
+      alignmentYReady: boolean;
+      faceSizeReady: boolean;
+      brightnessReady: boolean;
+      sharpnessReady: boolean;
+      guidanceReady: boolean;
     };
   };
   stabilizationAnim: Animated.Value;
@@ -277,6 +324,72 @@ export function FaceScanCameraScreen({
         <Text style={styles.debugText}>
           {`completed: ${debugReadout.completedPoseIds.join(", ") || "-"}`}
         </Text>
+
+        <View style={styles.debugDivider} />
+        <DebugGateRow
+          label="poseMatch"
+          ok={debugReadout.validation.poseMatch}
+          value={`${debugReadout.detectedPose} -> ${debugReadout.targetPose}`}
+        />
+        <DebugGateRow
+          label="guidanceReady"
+          ok={debugReadout.validation.guidanceReady}
+        />
+        <DebugGateRow
+          label="faceDetected"
+          ok={debugReadout.validation.faceDetected}
+        />
+        <DebugGateRow
+          label="distanceGood"
+          ok={debugReadout.validation.distanceGood}
+        />
+        <DebugGateRow
+          label="alignmentCentered"
+          ok={debugReadout.validation.alignmentCentered}
+        />
+        <DebugGateRow
+          label="qualityGood"
+          ok={debugReadout.validation.qualityGood}
+        />
+        <DebugGateRow
+          label="directionalReady"
+          ok={debugReadout.validation.directionalReady}
+        />
+        <DebugGateRow
+          label="yawWindow"
+          ok={debugReadout.validation.yawWithinWindow}
+          value={debugReadout.yaw == null ? "n/a" : debugReadout.yaw.toFixed(1)}
+        />
+        <DebugGateRow
+          label="pitchWindow"
+          ok={debugReadout.validation.pitchWithinWindow}
+          value={debugReadout.pitch == null ? "n/a" : debugReadout.pitch.toFixed(1)}
+        />
+        <DebugGateRow
+          label="alignX"
+          ok={debugReadout.validation.alignmentXReady}
+          value={debugReadout.cx == null ? "n/a" : debugReadout.cx.toFixed(3)}
+        />
+        <DebugGateRow
+          label="alignY"
+          ok={debugReadout.validation.alignmentYReady}
+          value={debugReadout.cy == null ? "n/a" : debugReadout.cy.toFixed(3)}
+        />
+        <DebugGateRow
+          label="faceSize"
+          ok={debugReadout.validation.faceSizeReady}
+          value={debugReadout.faceSizeRatio == null ? "n/a" : debugReadout.faceSizeRatio.toFixed(3)}
+        />
+        <DebugGateRow
+          label="brightness"
+          ok={debugReadout.validation.brightnessReady}
+          value={debugReadout.brightness == null ? "n/a" : debugReadout.brightness.toFixed(3)}
+        />
+        <DebugGateRow
+          label="sharpness"
+          ok={debugReadout.validation.sharpnessReady}
+          value={debugReadout.sharpness == null ? "n/a" : debugReadout.sharpness.toFixed(3)}
+        />
       </View>
 
       {/* ── Alignment banner ── */}
@@ -367,6 +480,35 @@ const styles = StyleSheet.create({
     color: "#D1D5DB",
     fontSize: 11,
     fontFamily: "monospace",
+  },
+  debugDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    marginVertical: 6,
+  },
+  debugGateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  debugBadge: {
+    borderRadius: 8,
+    minWidth: 26,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    alignItems: "center",
+  },
+  debugBadgeOk: {
+    backgroundColor: "rgba(34,197,94,0.9)",
+  },
+  debugBadgeBad: {
+    backgroundColor: "rgba(239,68,68,0.9)",
+  },
+  debugBadgeText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
 
   // Top overlay
