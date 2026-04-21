@@ -138,6 +138,25 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
     stabilizationAnim,
   ]);
 
+  // ── Polling fallback for stabilization grace period ───────────────────────
+  // The grace-period check in the progress effect only runs when guidance deps
+  // change. If stabilizationProgress stays at 0 and nothing else moves, the
+  // effect never re-fires and poseStatus gets permanently stuck at 'stabilizing'.
+  // This interval catches that case independently of React render cycles.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (phaseRef.current !== 'stabilizing') return;
+      const elapsed = Date.now() - lastNonZeroProgressAtRef.current;
+      if (elapsed >= STABILIZATION_DROP_GRACE_MS) {
+        phaseRef.current = 'detecting';
+        stabilizingSinceRef.current = null;
+        setScanState(s => ({ ...s, poseStatus: 'detecting' }));
+        stabilizationAnim.setValue(0);
+      }
+    }, 200);
+    return () => clearInterval(id);
+  }, [stabilizationAnim]);
+
   // ── Mirror guidance fields into scan state ─────────────────────────────────
   useEffect(() => {
     if (!isRunningRef.current) return;
@@ -166,6 +185,14 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
         outcome: 'missing_uri',
       });
       clearCaptureResult();
+      // Native delivered a window with no viable frames — reset so pipeline retries.
+      if (phaseRef.current !== 'captured') {
+        phaseRef.current = 'detecting';
+        stabilizingSinceRef.current = null;
+        lastNonZeroProgressAtRef.current = 0;
+        setScanState(s => ({ ...s, poseStatus: 'detecting' }));
+        stabilizationAnim.setValue(0);
+      }
       return;
     }
 
