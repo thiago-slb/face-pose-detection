@@ -33,9 +33,9 @@ struct CaptureThresholds {
   var minBrightness:       Float = 0.20   // below = too dark
   var maxBrightness:       Float = 0.88   // above = overexposed
   var minSharpness:        Float = 0.12   // below = blurry
-  var minCenteredness:     Float = 0.65   // face must be near frame center
+  var minCenteredness:     Float = 0.40   // face must be near frame center
   var minFaceSizeRatio:    Float = 0.15   // face height / frame height
-  var maxFaceSizeRatio:    Float = 0.72
+  var maxFaceSizeRatio:    Float = 0.80
   // Pose readiness gates (same semantics as JS DetectionThresholds)
   var maxYawDeviation:     Float = 20     // degrees from target yaw
   var maxPitchDeviation:   Float = 12     // degrees from target pitch

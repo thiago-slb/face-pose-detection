@@ -124,8 +124,13 @@ function AlignmentBanner({ alignmentStatus }: { alignmentStatus: string }) {
 
 function DebugBadge({ ok }: { ok: boolean }) {
   return (
-    <View style={[styles.debugBadge, ok ? styles.debugBadgeOk : styles.debugBadgeBad]}>
-      <Text style={styles.debugBadgeText}>{ok ? 'OK' : 'NO'}</Text>
+    <View
+      style={[
+        styles.debugBadge,
+        ok ? styles.debugBadgeOk : styles.debugBadgeBad,
+      ]}
+    >
+      <Text style={styles.debugBadgeText}>{ok ? "OK" : "NO"}</Text>
     </View>
   );
 }
@@ -196,11 +201,13 @@ interface Props {
       yawWithinWindow: boolean;
       pitchWithinWindow: boolean;
       directionalReady: boolean;
+      centerednessReady: boolean;
       alignmentXReady: boolean;
       alignmentYReady: boolean;
       faceSizeReady: boolean;
       brightnessReady: boolean;
       sharpnessReady: boolean;
+      centerednessScore: number | null;
       guidanceReady: boolean;
     };
   };
@@ -356,6 +363,15 @@ export function FaceScanCameraScreen({
           ok={debugReadout.validation.directionalReady}
         />
         <DebugGateRow
+          label="centeredness"
+          ok={debugReadout.validation.centerednessReady}
+          value={
+            debugReadout.validation.centerednessScore == null
+              ? "n/a"
+              : debugReadout.validation.centerednessScore.toFixed(3)
+          }
+        />
+        <DebugGateRow
           label="yawWindow"
           ok={debugReadout.validation.yawWithinWindow}
           value={debugReadout.yaw == null ? "n/a" : debugReadout.yaw.toFixed(1)}
@@ -363,7 +379,9 @@ export function FaceScanCameraScreen({
         <DebugGateRow
           label="pitchWindow"
           ok={debugReadout.validation.pitchWithinWindow}
-          value={debugReadout.pitch == null ? "n/a" : debugReadout.pitch.toFixed(1)}
+          value={
+            debugReadout.pitch == null ? "n/a" : debugReadout.pitch.toFixed(1)
+          }
         />
         <DebugGateRow
           label="alignX"
@@ -378,17 +396,29 @@ export function FaceScanCameraScreen({
         <DebugGateRow
           label="faceSize"
           ok={debugReadout.validation.faceSizeReady}
-          value={debugReadout.faceSizeRatio == null ? "n/a" : debugReadout.faceSizeRatio.toFixed(3)}
+          value={
+            debugReadout.faceSizeRatio == null
+              ? "n/a"
+              : debugReadout.faceSizeRatio.toFixed(3)
+          }
         />
         <DebugGateRow
           label="brightness"
           ok={debugReadout.validation.brightnessReady}
-          value={debugReadout.brightness == null ? "n/a" : debugReadout.brightness.toFixed(3)}
+          value={
+            debugReadout.brightness == null
+              ? "n/a"
+              : debugReadout.brightness.toFixed(3)
+          }
         />
         <DebugGateRow
           label="sharpness"
           ok={debugReadout.validation.sharpnessReady}
-          value={debugReadout.sharpness == null ? "n/a" : debugReadout.sharpness.toFixed(3)}
+          value={
+            debugReadout.sharpness == null
+              ? "n/a"
+              : debugReadout.sharpness.toFixed(3)
+          }
         />
       </View>
 
@@ -560,8 +590,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(7,10,18,0.88)",
     borderTopWidth: 1,
     borderTopColor: C.border,
-    paddingTop: 20,
-    gap: 12,
+    paddingTop: 4,
   },
   hints: { gap: 4, minHeight: 48, justifyContent: "center" },
   divider: { height: 1, backgroundColor: C.border, marginHorizontal: 24 },

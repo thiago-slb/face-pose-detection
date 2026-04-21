@@ -32,6 +32,7 @@ const NATIVE_DEBUG_THRESHOLDS = {
   maxPitchDeviation: 12,
   minYawForSidePose: 22,
   minPitchForVerticalPose: 16,
+  minCenteredness: 0.40,
   maxAlignmentOffsetX: 0.13,
   maxAlignmentOffsetY: 0.15,
   readinessMinSize: 0.15,
@@ -85,11 +86,13 @@ export interface UseFaceScanFlowResult {
       yawWithinWindow: boolean;
       pitchWithinWindow: boolean;
       directionalReady: boolean;
+      centerednessReady: boolean;
       alignmentXReady: boolean;
       alignmentYReady: boolean;
       faceSizeReady: boolean;
       brightnessReady: boolean;
       sharpnessReady: boolean;
+      centerednessScore: number | null;
       guidanceReady: boolean;
     };
   };
@@ -390,6 +393,14 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
             Math.abs(pitch) <= NATIVE_DEBUG_THRESHOLDS.maxPitchDeviation
           );
         })(),
+        centerednessReady: (() => {
+          const cx = debugReadout.cx;
+          const cy = debugReadout.cy;
+          if (cx == null || cy == null) return false;
+          const dist = Math.hypot(cx - 0.5, cy - 0.5);
+          const centeredness = Math.max(0, 1 - dist * 3);
+          return centeredness >= NATIVE_DEBUG_THRESHOLDS.minCenteredness;
+        })(),
         alignmentXReady: (() => {
           const cx = debugReadout.cx;
           if (cx == null) return false;
@@ -420,6 +431,13 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
           const value = debugReadout.sharpness;
           if (value == null) return false;
           return value >= NATIVE_DEBUG_THRESHOLDS.minSharpness;
+        })(),
+        centerednessScore: (() => {
+          const cx = debugReadout.cx;
+          const cy = debugReadout.cy;
+          if (cx == null || cy == null) return null;
+          const dist = Math.hypot(cx - 0.5, cy - 0.5);
+          return Math.max(0, 1 - dist * 3);
         })(),
         guidanceReady:
           guidance.faceDetected &&
