@@ -263,7 +263,7 @@ export function FaceScanCameraScreen({
       {!isNativeLinked && (
         <View style={styles.devBanner}>
           <Text style={styles.devBannerText}>
-            ⚠️ Native plugin not linked — detection is mocked
+            {"⚠️ Native plugin not linked"}
           </Text>
         </View>
       )}

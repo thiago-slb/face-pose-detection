@@ -78,7 +78,7 @@ export interface UseFaceDetectionOptions {
   thresholds?: Partial<DetectionThresholds>;
   stateUpdateIntervalMs?: number;
   processEveryNFrames?: number;
-  /** Active pose to score against. Updated via SharedValue — zero re-render cost. */
+  /** Active pose to score against. */
   targetPose?: string;
 }
 
@@ -113,12 +113,14 @@ export interface UseFaceDetectionResult {
 // ─── Hook ────────────────────────────────────────────────────────────────────
 export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDetectionResult {
   const {
-    mockMode = false,
+    mockMode: mockModeOverride,
     thresholds: thresholdOverrides,
     stateUpdateIntervalMs = 100,
     processEveryNFrames   = 2,
     targetPose            = 'center',
   } = opts;
+  const mockMode = mockModeOverride ?? !isPluginLinked;
+  const effectiveProcessEveryNFrames = Math.max(1, Math.floor(processEveryNFrames));
 
   const thresholds = useMemo(
     () => ({ ...DEFAULT_THRESHOLDS, ...thresholdOverrides }),
@@ -339,7 +341,7 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
   const onFrame = useCallback((frame: Frame) => {
     'worklet';
-    frameSkip.value = (frameSkip.value + 1) % processEveryNFrames;
+    frameSkip.value = (frameSkip.value + 1) % effectiveProcessEveryNFrames;
     if (frameSkip.value !== 0) {
       frame.dispose();
       return;
@@ -351,7 +353,7 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     const raw = detectFace(frame, { targetPose });
     if (raw != null) runOnJS(handleResult)(raw);
     frame.dispose();
-  }, [handleResult, frameSkip, processEveryNFrames, targetPose]);
+  }, [effectiveProcessEveryNFrames, handleResult, frameSkip, targetPose]);
 
   const frameOutput = useFrameOutput({
     onFrame,

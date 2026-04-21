@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from "react";
 import {
   Animated,
   SafeAreaView,
@@ -7,14 +7,14 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { C } from '../../constants/faceScanConfig';
+} from "react-native";
+import { C } from "../../constants/faceScanConfig";
 
 const TIPS = [
-  { icon: '☀️', text: 'Find a well-lit area' },
-  { icon: '👓', text: 'Remove glasses if possible' },
-  { icon: '😐', text: 'Keep a neutral expression' },
-  { icon: '📱', text: 'Hold the phone at eye level' },
+  { icon: "☀️", text: "Find a well-lit area" },
+  { icon: "👓", text: "Remove glasses if possible" },
+  { icon: "😐", text: "Keep a neutral expression" },
+  { icon: "📱", text: "Hold the phone at eye level" },
 ];
 
 interface Props {
@@ -22,21 +22,37 @@ interface Props {
 }
 
 export function FaceScanIntroScreen({ onStart }: Props) {
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(24)).current;
   const ovalPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 520, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 520, useNativeDriver: true }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 520,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 520,
+        useNativeDriver: true,
+      }),
     ]).start();
 
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(ovalPulse, { toValue: 1.04, duration: 1800, useNativeDriver: true }),
-        Animated.timing(ovalPulse, { toValue: 0.96, duration: 1800, useNativeDriver: true }),
-      ])
+        Animated.timing(ovalPulse, {
+          toValue: 1.04,
+          duration: 1800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(ovalPulse, {
+          toValue: 0.96,
+          duration: 1800,
+          useNativeDriver: true,
+        }),
+      ]),
     );
     pulse.start();
     return () => pulse.stop();
@@ -49,35 +65,12 @@ export function FaceScanIntroScreen({ onStart }: Props) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-
-          {/* Hero oval */}
-          <View style={styles.heroWrap}>
-            <Animated.View style={[styles.heroOval, { transform: [{ scale: ovalPulse }] }]}>
-              <View style={styles.heroOvalInner}>
-                {/* Silhouette suggestion */}
-                <View style={styles.heroHead} />
-                <View style={styles.heroShoulder} />
-              </View>
-              {/* Scanning line hint */}
-              <View style={styles.scanLine} />
-            </Animated.View>
-            <View style={styles.scanBadge}>
-              <Text style={styles.scanBadgeText}>BIOMETRIC</Text>
-            </View>
-          </View>
-
-          {/* Title */}
-          <Text style={styles.title}>Face Scan</Text>
-          <Text style={styles.subtitle}>
-            We'll guide you through 5 short poses to verify your identity. The scan takes about
-            30 seconds.
-          </Text>
-
+        <Animated.View
+          style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
+        >
           {/* Tips */}
           <View style={styles.tipsCard}>
-            <Text style={styles.tipsTitle}>For best results</Text>
-            {TIPS.map(tip => (
+            {TIPS.map((tip) => (
               <View key={tip.text} style={styles.tipRow}>
                 <Text style={styles.tipIcon}>{tip.icon}</Text>
                 <Text style={styles.tipText}>{tip.text}</Text>
@@ -86,13 +79,13 @@ export function FaceScanIntroScreen({ onStart }: Props) {
           </View>
 
           {/* CTA */}
-          <TouchableOpacity style={styles.btn} onPress={onStart} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={onStart}
+            activeOpacity={0.85}
+          >
             <Text style={styles.btnText}>Start Scan</Text>
           </TouchableOpacity>
-
-          <Text style={styles.footer}>
-            Your biometric data is processed locally and never stored.
-          </Text>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -112,11 +105,13 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 40,
     gap: 24,
+    justifyContent: "center",
+    flex: 1,
   },
 
   // Hero
   heroWrap: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 8,
     gap: 12,
   },
@@ -127,18 +122,18 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: C.primary,
     backgroundColor: C.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   heroOvalInner: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    width: '100%',
-    height: '100%',
+    alignItems: "center",
+    justifyContent: "flex-end",
+    width: "100%",
+    height: "100%",
   },
   heroHead: {
-    position: 'absolute',
+    position: "absolute",
     top: 28,
     width: 52,
     height: 60,
@@ -146,7 +141,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceHigh,
   },
   heroShoulder: {
-    position: 'absolute',
+    position: "absolute",
     bottom: -10,
     width: 110,
     height: 60,
@@ -154,8 +149,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceHigh,
   },
   scanLine: {
-    position: 'absolute',
-    top: '45%',
+    position: "absolute",
+    top: "45%",
     left: 8,
     right: 8,
     height: 1,
@@ -172,7 +167,7 @@ const styles = StyleSheet.create({
   },
   scanBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
     color: C.textSecondary,
     letterSpacing: 1.5,
   },
@@ -180,7 +175,7 @@ const styles = StyleSheet.create({
   // Text
   title: {
     fontSize: 30,
-    fontWeight: '700',
+    fontWeight: "700",
     color: C.textPrimary,
     letterSpacing: -0.5,
   },
@@ -202,25 +197,25 @@ const styles = StyleSheet.create({
   },
   tipsTitle: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     color: C.textMuted,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 1,
   },
   tipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   tipIcon: {
     fontSize: 18,
     width: 28,
-    textAlign: 'center',
+    textAlign: "center",
   },
   tipText: {
     fontSize: 15,
     color: C.textPrimary,
-    fontWeight: '400',
+    fontWeight: "400",
   },
 
   // CTA
@@ -228,19 +223,19 @@ const styles = StyleSheet.create({
     backgroundColor: C.primary,
     borderRadius: 14,
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   btnText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
+    fontWeight: "700",
+    color: "#fff",
     letterSpacing: 0.2,
   },
 
   footer: {
     fontSize: 12,
     color: C.textMuted,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 18,
   },
 });

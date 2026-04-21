@@ -131,7 +131,14 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
   // useFaceDetection, which updates the SharedValue fed into the worklet.
   const targetPose = POSES[scanState.currentPoseIndex]?.id ?? 'center';
 
-  const { guidance, debugReadout, captureResult, clearCaptureResult, frameOutput, isNativeLinked } =
+  const {
+    guidance,
+    debugReadout,
+    captureResult,
+    clearCaptureResult,
+    frameOutput,
+    isNativeLinked,
+  } =
     useFaceDetection({ ...detectionOpts, targetPose });
 
   // ── Drive stabilization progress bar from native ──────────────────────────

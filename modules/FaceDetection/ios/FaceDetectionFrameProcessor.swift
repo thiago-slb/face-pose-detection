@@ -58,7 +58,9 @@ class FaceDetectionFrameProcessor: HybridFaceDetectionFrameProcessorSpec {
     }
 
     do {
-      try handler.perform([request], on: sampleBuffer, orientation: .leftMirrored)
+      // Let Vision infer orientation from sample-buffer metadata instead of
+      // forcing a fixed mirrored orientation.
+      try handler.perform([request], on: sampleBuffer)
     } catch {
       return noFaceResult(sampleBuffer: sampleBuffer, targetPose: targetPose)
     }
