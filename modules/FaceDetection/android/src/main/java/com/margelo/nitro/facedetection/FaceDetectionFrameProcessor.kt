@@ -1,6 +1,6 @@
 package com.margelo.nitro.facedetection
 
-import android.graphics.ImageFormat
+import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -9,12 +9,30 @@ import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.camera.HybridFrameSpec
 import com.margelo.nitro.camera.public.NativeFrame
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
 class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
+  private data class DetectionSnapshot(
+    val bbX: Double,
+    val bbY: Double,
+    val bbW: Double,
+    val bbH: Double,
+    val cx: Float,
+    val cy: Float,
+    val faceSizeRatio: Float,
+    val yaw: Float,
+    val pitch: Float,
+    val roll: Double,
+    val brightness: Double,
+    val sharpness: Double,
+  )
+
   private val detector = FaceDetection.getClient(
     FaceDetectorOptions.Builder()
       .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
@@ -29,6 +47,11 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
   private val appContext = NitroModules.applicationContext?.applicationContext
     ?: throw IllegalStateException("NitroModules.applicationContext is null; FaceDetection cannot initialize.")
   private val pipeline = FaceCapturePipeline(appContext)
+  private val detectorExecutor = Executors.newSingleThreadExecutor()
+  private val latestDetection = AtomicReference<DetectionSnapshot?>(null)
+  private val detectionInFlight = AtomicBoolean(false)
+  private val lastDetectionStartedAtMs = AtomicLong(0L)
+  private val minDetectionIntervalMs = 50L
 
   private val pendingCapture = AtomicReference<CapturePayload?>(null)
   private val lastTargetPose = AtomicReference<String?>(null)
@@ -73,37 +96,91 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
       }
     }
 
-    val imageProxy = (frame as? NativeFrame)?.image ?: return noFaceResult(targetPose)
+    val imageProxy = (frame as? NativeFrame)?.image
+    if (imageProxy != null) {
+      scheduleAsyncDetectionIfNeeded(imageProxy)
+    }
+
+    val snapshot = latestDetection.get() ?: return noFaceResult(targetPose)
+    val progress = pipeline.processFrame(
+      image = imageProxy,
+      faceDetected = true,
+      yaw = snapshot.yaw,
+      pitch = snapshot.pitch,
+      cx = snapshot.cx,
+      cy = snapshot.cy,
+      faceSizeRatio = snapshot.faceSizeRatio,
+      rawBrightness = snapshot.brightness.toFloat(),
+      rawSharpness = snapshot.sharpness.toFloat(),
+      targetPose = targetPose,
+    )
+
+    return Variant_NullType_GuidanceResult_CaptureResult.create(
+      GuidanceResult(
+        type = NativeResultType.GUIDANCE,
+        faceDetected = true,
+        boundingBoxX = snapshot.bbX,
+        boundingBoxY = snapshot.bbY,
+        boundingBoxWidth = snapshot.bbW,
+        boundingBoxHeight = snapshot.bbH,
+        yaw = snapshot.yaw.toDouble(),
+        pitch = snapshot.pitch.toDouble(),
+        roll = snapshot.roll,
+        brightness = snapshot.brightness,
+        sharpness = snapshot.sharpness,
+        faceSizeRatio = snapshot.faceSizeRatio.toDouble(),
+        faceCenterX = snapshot.cx.toDouble(),
+        faceCenterY = snapshot.cy.toDouble(),
+        stabilizationProgress = progress.toDouble(),
+      ),
+    )
+  }
+
+  private fun scheduleAsyncDetectionIfNeeded(imageProxy: ImageProxy) {
+    if (detectionInFlight.get()) return
+
+    val now = System.currentTimeMillis()
+    val lastStarted = lastDetectionStartedAtMs.get()
+    if (now - lastStarted < minDetectionIntervalMs) return
+    if (!lastDetectionStartedAtMs.compareAndSet(lastStarted, now)) return
+
+    val bitmap = runCatching { imageProxy.toBitmap() }.getOrNull() ?: return
+    val rotation = imageProxy.imageInfo.rotationDegrees
     val frameW = imageProxy.width.toFloat()
     val frameH = imageProxy.height.toFloat()
+    val inputImage = InputImage.fromBitmap(bitmap, rotation)
 
-    // ML Kit's fromMediaImage only accepts YUV_420_888 or JPEG.
-    // For RGBA_8888 or any other format produced by HybridFrameOutput, fall back
-    // to fromBitmap so detection always works regardless of camera output format.
-    val mediaImage = imageProxy.image
-    val inputImage = try {
-      if (mediaImage != null && imageProxy.format == ImageFormat.YUV_420_888) {
-        InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-      } else {
-        InputImage.fromBitmap(imageProxy.toBitmap(), imageProxy.imageInfo.rotationDegrees)
+    detectionInFlight.set(true)
+    detector
+      .process(inputImage)
+      .addOnSuccessListener(detectorExecutor) { faces ->
+        val snapshot = buildSnapshot(
+          face = faces.firstOrNull(),
+          frameW = frameW,
+          frameH = frameH,
+          rotation = rotation,
+          bitmap = bitmap,
+        )
+        latestDetection.set(snapshot)
+        bitmap.recycle()
+        detectionInFlight.set(false)
       }
-    } catch (_: Exception) {
-      return noFaceResult(targetPose)
-    }
-    val faces: List<Face> = try {
-      com.google.android.gms.tasks.Tasks.await(
-        detector.process(inputImage),
-        300,
-        java.util.concurrent.TimeUnit.MILLISECONDS,
-      )
-    } catch (_: Exception) {
-      return noFaceResult(targetPose)
-    }
+      .addOnFailureListener(detectorExecutor) {
+        latestDetection.set(null)
+        bitmap.recycle()
+        detectionInFlight.set(false)
+      }
+  }
 
-    val face = faces.firstOrNull() ?: return noFaceResult(targetPose)
-
+  private fun buildSnapshot(
+    face: Face?,
+    frameW: Float,
+    frameH: Float,
+    rotation: Int,
+    bitmap: android.graphics.Bitmap,
+  ): DetectionSnapshot? {
+    face ?: return null
     val rect = face.boundingBox
-    val rotation = imageProxy.imageInfo.rotationDegrees
     val (normW, normH) = if (rotation == 90 || rotation == 270) {
       frameH.toDouble() to frameW.toDouble()
     } else {
@@ -119,83 +196,40 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
 
     val rawYaw = face.headEulerAngleY
     val yaw = if (CaptureConfig.invertYawForFrontCamera) -rawYaw else rawYaw
-    // Normalize pitch to user-facing semantics: positive = UP, negative = DOWN.
-    // ML Kit's headEulerAngleX already follows this convention on Android.
     val pitch = face.headEulerAngleX
     val roll = face.headEulerAngleZ.toDouble()
+    val (brightness, sharpness) = qualityMetricsFromBitmap(bitmap, rect)
 
-    val (rawBrightness, rawSharpness) = qualityMetrics(
-      imageProxy,
-      frameW.toInt(),
-      frameH.toInt(),
-      bbX,
-      bbY,
-      bbW,
-      bbH,
-    )
-
-    val progress = pipeline.processFrame(
-      image = imageProxy,
-      faceDetected = true,
-      yaw = yaw,
-      pitch = pitch,
+    return DetectionSnapshot(
+      bbX = bbX,
+      bbY = bbY,
+      bbW = bbW,
+      bbH = bbH,
       cx = cx,
       cy = cy,
       faceSizeRatio = faceSizeRatio,
-      rawBrightness = rawBrightness.toFloat(),
-      rawSharpness = rawSharpness.toFloat(),
-      targetPose = targetPose,
-    )
-
-    return Variant_NullType_GuidanceResult_CaptureResult.create(
-      GuidanceResult(
-        type = NativeResultType.GUIDANCE,
-        faceDetected = true,
-        boundingBoxX = bbX,
-        boundingBoxY = bbY,
-        boundingBoxWidth = bbW,
-        boundingBoxHeight = bbH,
-        yaw = yaw.toDouble(),
-        pitch = pitch.toDouble(),
-        roll = roll,
-        brightness = rawBrightness,
-        sharpness = rawSharpness,
-        faceSizeRatio = faceSizeRatio.toDouble(),
-        faceCenterX = cx.toDouble(),
-        faceCenterY = cy.toDouble(),
-        stabilizationProgress = progress.toDouble(),
-      ),
+      yaw = yaw,
+      pitch = pitch,
+      roll = roll,
+      brightness = brightness,
+      sharpness = sharpness,
     )
   }
 
-  private fun qualityMetrics(
-    image: ImageProxy,
-    frameW: Int,
-    frameH: Int,
-    bbX: Double,
-    bbY: Double,
-    bbW: Double,
-    bbH: Double,
-  ): Pair<Double, Double> {
-    // Y-plane analysis requires YUV_420_888 and rotation=0/180.
-    // For rotated frames (portrait phones: rotation=90/270) the bounding box is in
-    // display-space but Y-plane indices are in sensor-space — axes are transposed,
-    // so we'd read from the wrong region. Return neutral values instead.
-    if (image.format != ImageFormat.YUV_420_888) return 0.5 to 0.5
-    val rotation = image.imageInfo.rotationDegrees
-    if (rotation == 90 || rotation == 270) return 0.5 to 0.5
-    val yPlane = image.planes[0]
-    val yBuf = yPlane.buffer
-    val rowStride = yPlane.rowStride
-    val pixStride = yPlane.pixelStride
-
-    val x0 = max(1, (bbX * frameW).toInt())
-    val y0 = max(1, (bbY * frameH).toInt())
-    val x1 = min(frameW - 2, ((bbX + bbW) * frameW).toInt())
-    val y1 = min(frameH - 2, ((bbY + bbH) * frameH).toInt())
+  private fun qualityMetricsFromBitmap(bitmap: android.graphics.Bitmap, rect: Rect): Pair<Double, Double> {
+    val x0 = max(1, rect.left.coerceAtLeast(0))
+    val y0 = max(1, rect.top.coerceAtLeast(0))
+    val x1 = min(bitmap.width - 2, rect.right.coerceAtMost(bitmap.width))
+    val y1 = min(bitmap.height - 2, rect.bottom.coerceAtMost(bitmap.height))
     if (x1 <= x0 || y1 <= y0) return 0.5 to 0.0
 
-    fun luma(x: Int, y: Int) = yBuf.get(y * rowStride + x * pixStride).toInt() and 0xFF
+    fun lumaAt(x: Int, y: Int): Int {
+      val color = bitmap.getPixel(x, y)
+      val r = (color shr 16) and 0xFF
+      val g = (color shr 8) and 0xFF
+      val b = color and 0xFF
+      return (r * 299 + g * 587 + b * 114) / 1000
+    }
 
     var sum = 0L
     var n = 0
@@ -204,7 +238,7 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     while (py <= y1) {
       var px = x0
       while (px <= x1) {
-        sum += luma(px, py)
+        sum += lumaAt(px, py)
         n++
         px += brightnessStride
       }
@@ -218,7 +252,13 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     while (py <= y1) {
       var px = x0
       while (px <= x1) {
-        laps.add((-4.0 * luma(px, py) + luma(px - 1, py) + luma(px + 1, py) + luma(px, py - 1) + luma(px, py + 1)))
+        laps.add(
+          -4.0 * lumaAt(px, py) +
+            lumaAt(px - 1, py) +
+            lumaAt(px + 1, py) +
+            lumaAt(px, py - 1) +
+            lumaAt(px, py + 1),
+        )
         px += lapStride
       }
       py += lapStride
