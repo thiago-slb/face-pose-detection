@@ -167,12 +167,6 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
   const clearCaptureResult = useCallback(() => setCaptureResult(null), []);
 
-  // ── Shared value for targetPose (readable inside worklet without closure churn) ──
-  const targetPoseShared = useSharedValue(targetPose);
-  useEffect(() => {
-    targetPoseShared.value = targetPose;
-  }, [targetPose, targetPoseShared]);
-
   // ── Mock mode — guidance cycling ──
   useEffect(() => {
     if (!mockMode) return;
@@ -351,10 +345,13 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
       return;
     }
 
-    const raw = detectFace(frame, { targetPose: targetPoseShared.value });
+    // Pass the current target pose directly from the hook closure.
+    // Using a Reanimated SharedValue here can become stale in VisionCamera's
+    // worklet runtime, causing native to keep scoring against "center".
+    const raw = detectFace(frame, { targetPose });
     if (raw != null) runOnJS(handleResult)(raw);
     frame.dispose();
-  }, [handleResult, frameSkip, processEveryNFrames, targetPoseShared]);
+  }, [handleResult, frameSkip, processEveryNFrames, targetPose]);
 
   const frameOutput = useFrameOutput({
     onFrame,
