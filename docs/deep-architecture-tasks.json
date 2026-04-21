@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "source": "docs/deep-architecture-review.md",
+  "generatedAt": "2026-04-21",
+  "statusModel": {
+    "allowed": ["pending", "in_progress", "completed", "blocked"],
+    "meaning": {
+      "pending": "Not started yet",
+      "in_progress": "Actively being worked on",
+      "completed": "Implemented and verified",
+      "blocked": "Cannot proceed due to dependency/risk"
+    }
+  },
+  "tasks": [
+    {
+      "id": "T01",
+      "title": "Remove synchronous ML Kit wait from Android frame callback",
+      "area": "Android",
+      "priority": 1,
+      "sourceRank": 1,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Replace Tasks.await with bounded async analyzer/latest-frame-wins approach"
+    },
+    {
+      "id": "T02",
+      "title": "Make Android quality metrics rotation-aware instead of neutral fallback",
+      "area": "Android",
+      "priority": 2,
+      "sourceRank": 2,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Handle 90/270 rotation mapping for Y-plane sampling"
+    },
+    {
+      "id": "T03",
+      "title": "Reuse CIContext in iOS JPEG encoding path",
+      "area": "iOS",
+      "priority": 3,
+      "sourceRank": 3,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Avoid per-encode CIContext allocations"
+    },
+    {
+      "id": "T04",
+      "title": "Consolidate JS scan flow into a single explicit state machine",
+      "area": "JS Runtime",
+      "priority": 4,
+      "sourceRank": 4,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Reduce refs + polling interval orchestration complexity"
+    },
+    {
+      "id": "T05",
+      "title": "Normalize JS/native result discriminant contract",
+      "area": "Nitro Modules / TypeScript",
+      "priority": 5,
+      "sourceRank": 5,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Remove numeric/string union coercion path"
+    },
+    {
+      "id": "T06",
+      "title": "Reduce high-frequency runOnJS payload chatter",
+      "area": "Reanimated / VisionCamera",
+      "priority": 6,
+      "sourceRank": 6,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Lower cadence and/or send compact deltas from native"
+    },
+    {
+      "id": "T07",
+      "title": "Gate debug panel and debug calculations behind __DEV__ flag",
+      "area": "UI / DX",
+      "priority": 7,
+      "sourceRank": 7,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Keep production render path lean"
+    },
+    {
+      "id": "T08",
+      "title": "Add camera lifecycle handling for focus/app-state interruptions",
+      "area": "Reliability",
+      "priority": 8,
+      "sourceRank": 8,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Bind Camera.isActive to route focus + AppState"
+    },
+    {
+      "id": "T09",
+      "title": "Add explicit native resource teardown semantics",
+      "area": "Android / iOS",
+      "priority": 9,
+      "sourceRank": 9,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Close detector/executors and define lifecycle ownership"
+    },
+    {
+      "id": "T10",
+      "title": "Add cross-platform parity checks for pose semantics",
+      "area": "Platform Parity",
+      "priority": 10,
+      "sourceRank": 10,
+      "status": "pending",
+      "performed": false,
+      "completed": false,
+      "notes": "Ensure ML Kit and Vision produce compatible outputs"
+    }
+  ]
+}
