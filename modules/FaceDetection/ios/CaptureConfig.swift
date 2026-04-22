@@ -1,6 +1,10 @@
 // CaptureConfig.swift
 // Tunable constants for the native best-frame capture pipeline.
 // All values can be overridden at runtime for A/B testing.
+//
+// Cross-platform contract: all default values below must match
+// constants/nativeContract.ts in the JS workspace.
+// Update both files together when changing any threshold or pose target.
 
 import Foundation
 

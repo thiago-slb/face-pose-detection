@@ -28,30 +28,10 @@ import type { CameraRef } from 'react-native-vision-camera';
 
 import { useFaceDetection, type UseFaceDetectionOptions } from './useFaceDetection';
 import { POSES, CAPTURE_FLASH_MS } from '../constants/faceScanConfig';
+import { CAPTURE_THRESHOLDS, POSE_TARGETS } from '../constants/nativeContract';
 import type { FaceScanState, CapturedFrame } from '../types/faceScan';
 
 const STABILIZATION_DROP_GRACE_MS = 350;
-const NATIVE_DEBUG_THRESHOLDS = {
-  maxYawDeviation: 20,
-  maxPitchDeviation: 12,
-  minYawForSidePose: 22,
-  minPitchForVerticalPose: 16,
-  minCenteredness: 0.40,
-  maxAlignmentOffsetX: 0.13,
-  maxAlignmentOffsetY: 0.15,
-  readinessMinSize: 0.15,
-  readinessMaxSize: 0.80,
-  minBrightness: 0.20,
-  maxBrightness: 0.88,
-  minSharpness: 0.12,
-} as const;
-const TARGET_POSE_ANGLES: Record<string, { yaw: number; pitch: number }> = {
-  center: { yaw: 0, pitch: 0 },
-  left: { yaw: -30, pitch: 0 },
-  right: { yaw: 30, pitch: 0 },
-  up: { yaw: 0, pitch: 20 },
-  down: { yaw: 0, pitch: -20 },
-};
 
 const BLANK_FRAMES: (CapturedFrame | null)[] = Array(POSES.length).fill(null);
 
@@ -394,27 +374,27 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
         qualityGood: guidance.qualityStatus === 'good',
         yawWithinWindow: (() => {
           const yaw = debugReadout.yaw;
-          const target = TARGET_POSE_ANGLES[targetPose] ?? TARGET_POSE_ANGLES.center;
+          const target = POSE_TARGETS[targetPose] ?? POSE_TARGETS.center;
           if (yaw == null) return false;
-          return Math.abs(yaw - target.yaw) <= NATIVE_DEBUG_THRESHOLDS.maxYawDeviation;
+          return Math.abs(yaw - target.yaw) <= CAPTURE_THRESHOLDS.maxYawDeviation;
         })(),
         pitchWithinWindow: (() => {
           const pitch = debugReadout.pitch;
-          const target = TARGET_POSE_ANGLES[targetPose] ?? TARGET_POSE_ANGLES.center;
+          const target = POSE_TARGETS[targetPose] ?? POSE_TARGETS.center;
           if (pitch == null) return false;
-          return Math.abs(pitch - target.pitch) <= NATIVE_DEBUG_THRESHOLDS.maxPitchDeviation;
+          return Math.abs(pitch - target.pitch) <= CAPTURE_THRESHOLDS.maxPitchDeviation;
         })(),
         directionalReady: (() => {
           const yaw = debugReadout.yaw;
           const pitch = debugReadout.pitch;
           if (yaw == null || pitch == null) return false;
-          if (targetPose === 'left') return yaw <= -NATIVE_DEBUG_THRESHOLDS.minYawForSidePose;
-          if (targetPose === 'right') return yaw >= NATIVE_DEBUG_THRESHOLDS.minYawForSidePose;
-          if (targetPose === 'up') return pitch >= NATIVE_DEBUG_THRESHOLDS.minPitchForVerticalPose;
-          if (targetPose === 'down') return pitch <= -NATIVE_DEBUG_THRESHOLDS.minPitchForVerticalPose;
+          if (targetPose === 'left') return yaw <= -CAPTURE_THRESHOLDS.minYawForSidePose;
+          if (targetPose === 'right') return yaw >= CAPTURE_THRESHOLDS.minYawForSidePose;
+          if (targetPose === 'up') return pitch >= CAPTURE_THRESHOLDS.minPitchForVerticalPose;
+          if (targetPose === 'down') return pitch <= -CAPTURE_THRESHOLDS.minPitchForVerticalPose;
           return (
-            Math.abs(yaw) <= NATIVE_DEBUG_THRESHOLDS.maxYawDeviation &&
-            Math.abs(pitch) <= NATIVE_DEBUG_THRESHOLDS.maxPitchDeviation
+            Math.abs(yaw) <= CAPTURE_THRESHOLDS.maxYawDeviation &&
+            Math.abs(pitch) <= CAPTURE_THRESHOLDS.maxPitchDeviation
           );
         })(),
         centerednessReady: (() => {
@@ -423,38 +403,38 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
           if (cx == null || cy == null) return false;
           const dist = Math.hypot(cx - 0.5, cy - 0.5);
           const centeredness = Math.max(0, 1 - dist * 3);
-          return centeredness >= NATIVE_DEBUG_THRESHOLDS.minCenteredness;
+          return centeredness >= CAPTURE_THRESHOLDS.minCenteredness;
         })(),
         alignmentXReady: (() => {
           const cx = debugReadout.cx;
           if (cx == null) return false;
-          return Math.abs(cx - 0.5) <= NATIVE_DEBUG_THRESHOLDS.maxAlignmentOffsetX;
+          return Math.abs(cx - 0.5) <= CAPTURE_THRESHOLDS.maxAlignmentOffsetX;
         })(),
         alignmentYReady: (() => {
           const cy = debugReadout.cy;
           if (cy == null) return false;
-          return Math.abs(cy - 0.5) <= NATIVE_DEBUG_THRESHOLDS.maxAlignmentOffsetY;
+          return Math.abs(cy - 0.5) <= CAPTURE_THRESHOLDS.maxAlignmentOffsetY;
         })(),
         faceSizeReady: (() => {
           const ratio = debugReadout.faceSizeRatio;
           if (ratio == null) return false;
           return (
-            ratio >= NATIVE_DEBUG_THRESHOLDS.readinessMinSize &&
-            ratio <= NATIVE_DEBUG_THRESHOLDS.readinessMaxSize
+            ratio >= CAPTURE_THRESHOLDS.readinessMinSize &&
+            ratio <= CAPTURE_THRESHOLDS.readinessMaxSize
           );
         })(),
         brightnessReady: (() => {
           const value = debugReadout.brightness;
           if (value == null) return false;
           return (
-            value >= NATIVE_DEBUG_THRESHOLDS.minBrightness &&
-            value <= NATIVE_DEBUG_THRESHOLDS.maxBrightness
+            value >= CAPTURE_THRESHOLDS.minBrightness &&
+            value <= CAPTURE_THRESHOLDS.maxBrightness
           );
         })(),
         sharpnessReady: (() => {
           const value = debugReadout.sharpness;
           if (value == null) return false;
-          return value >= NATIVE_DEBUG_THRESHOLDS.minSharpness;
+          return value >= CAPTURE_THRESHOLDS.minSharpness;
         })(),
         centerednessScore: (() => {
           const cx = debugReadout.cx;
