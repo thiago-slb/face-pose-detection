@@ -330,6 +330,9 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
   // ── Frame output worklet ──
   const frameSkip = useSharedValue(0);
+  // Tracks the last time a guidance result was forwarded to the JS thread.
+  // Capture results bypass this gate and are always dispatched immediately.
+  const lastGuidanceSentAt = useSharedValue(0);
 
   const onFrame = useCallback((frame: Frame) => {
     'worklet';
@@ -343,9 +346,25 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
     // Using a Reanimated SharedValue here can become stale in VisionCamera's
     // worklet runtime, causing native to keep scoring against "center".
     const raw = detectFace(frame, { targetPose });
-    if (raw != null) runOnJS(handleResult)(raw);
+    if (raw == null) {
+      frame.dispose();
+      return;
+    }
+
+    // Capture events are time-critical — dispatch immediately.
+    // Guidance events are throttled to ~10 Hz to reduce JS thread pressure
+    // without affecting the native pipeline's own frame cadence.
+    if (raw.type === NativeResultType.CAPTURED) {
+      runOnJS(handleResult)(raw);
+    } else {
+      const now = Date.now();
+      if (now - lastGuidanceSentAt.value >= 100) {
+        lastGuidanceSentAt.value = now;
+        runOnJS(handleResult)(raw);
+      }
+    }
     frame.dispose();
-  }, [effectiveProcessEveryNFrames, handleResult, frameSkip, targetPose]);
+  }, [effectiveProcessEveryNFrames, handleResult, frameSkip, targetPose, lastGuidanceSentAt]);
 
   const frameOutput = useFrameOutput({
     onFrame,

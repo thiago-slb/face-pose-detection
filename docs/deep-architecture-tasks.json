@@ -78,10 +78,11 @@
       "area": "Reanimated / VisionCamera",
       "priority": 6,
       "sourceRank": 6,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Lower cadence and/or send compact deltas from native"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-22",
+      "notes": "Capture results bypass throttle and dispatch immediately; guidance results gated by a 100ms SharedValue timestamp in the worklet, capping JS wakeups at ~10 Hz"
     },
     {
       "id": "T07",
