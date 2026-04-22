@@ -38,9 +38,6 @@ yarn-error.*
 
 app-example
 
-# generated native folders
-/ios
-/android
 
 # local native modules: generated/build artifacts
 /modules/*/android/build/
