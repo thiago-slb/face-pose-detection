@@ -11,10 +11,15 @@
  *   - guidance.stabilizationProgress  → drives the progress bar animation
  *   - captureResult                   → native has selected the best frame;
  *                                        store the URI and advance to next pose
+ *
+ * Flow control uses a single useReducer instead of scattered mutable refs.
+ * The grace period for stabilization drop is enforced with a one-shot
+ * setTimeout rather than a polling interval.
  */
 import {
   useCallback,
   useEffect,
+  useReducer,
   useRef,
   useState,
 } from 'react';
@@ -25,7 +30,6 @@ import { useFaceDetection, type UseFaceDetectionOptions } from './useFaceDetecti
 import { POSES, CAPTURE_FLASH_MS } from '../constants/faceScanConfig';
 import type { FaceScanState, CapturedFrame } from '../types/faceScan';
 
-type ScanPhase = 'detecting' | 'stabilizing' | 'captured';
 const STABILIZATION_DROP_GRACE_MS = 350;
 const NATIVE_DEBUG_THRESHOLDS = {
   maxYawDeviation: 20,
@@ -51,15 +55,72 @@ const TARGET_POSE_ANGLES: Record<string, { yaw: number; pitch: number }> = {
 
 const BLANK_FRAMES: (CapturedFrame | null)[] = Array(POSES.length).fill(null);
 
-const INITIAL_STATE: FaceScanState = {
-  screen:          'intro',
-  currentPoseIndex: 0,
-  poseStatus:      'idle',
-  distanceStatus:  'good',
-  alignmentStatus: 'centered',
-  qualityStatus:   'good',
-  capturedFrames:  [...BLANK_FRAMES],
+// ─── State machine ─────────────────────────────────────────────────────────────
+
+type ScanPhase = 'detecting' | 'stabilizing' | 'captured';
+
+interface MachineState {
+  running: boolean;
+  done: boolean;
+  poseIndex: number;
+  phase: ScanPhase;
+  frames: (CapturedFrame | null)[];
+}
+
+type MachineAction =
+  | { type: 'start' }
+  | { type: 'retake' }
+  | { type: 'progress_active' }
+  | { type: 'grace_expired' }
+  | { type: 'capture_ok'; frame: CapturedFrame; poseIndex: number }
+  | { type: 'capture_bad' }
+  | { type: 'advance' };
+
+const MACHINE_INIT: MachineState = {
+  running: false,
+  done: false,
+  poseIndex: 0,
+  phase: 'detecting',
+  frames: [...BLANK_FRAMES],
 };
+
+function scanReducer(state: MachineState, action: MachineAction): MachineState {
+  switch (action.type) {
+    case 'start':
+    case 'retake':
+      return { running: true, done: false, poseIndex: 0, phase: 'detecting', frames: [...BLANK_FRAMES] };
+
+    case 'progress_active':
+      if (!state.running || state.phase !== 'detecting') return state;
+      return { ...state, phase: 'stabilizing' };
+
+    case 'grace_expired':
+      if (!state.running || state.phase !== 'stabilizing') return state;
+      return { ...state, phase: 'detecting' };
+
+    case 'capture_ok': {
+      if (!state.running || state.phase === 'captured' || action.poseIndex !== state.poseIndex) return state;
+      const frames = state.frames.map((f, i) => (i === action.poseIndex ? action.frame : f));
+      return { ...state, phase: 'captured', frames };
+    }
+
+    case 'capture_bad':
+      if (!state.running || state.phase === 'captured') return state;
+      return { ...state, phase: 'detecting' };
+
+    case 'advance': {
+      if (!state.running) return state;
+      const next = state.poseIndex + 1;
+      if (next < POSES.length) return { ...state, poseIndex: next, phase: 'detecting' };
+      return { ...state, running: false, done: true };
+    }
+
+    default:
+      return state;
+  }
+}
+
+// ─── Public interface ──────────────────────────────────────────────────────────
 
 export interface UseFaceScanFlowResult {
   state: FaceScanState;
@@ -105,16 +166,21 @@ export interface UseFaceScanFlowResult {
   isNativeLinked: boolean;
 }
 
-export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFaceScanFlowResult {
-  const [scanState, setScanState] = useState<FaceScanState>(INITIAL_STATE);
-  const stabilizationAnim = useRef(new Animated.Value(0)).current;
-  const cameraRef         = useRef<CameraRef | null>(null);
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
-  const phaseRef      = useRef<ScanPhase>('detecting');
-  const poseIndexRef  = useRef(0);
-  const capturedRef   = useRef<(CapturedFrame | null)[]>([...BLANK_FRAMES]);
-  const isRunningRef  = useRef(false);
-  const lastNonZeroProgressAtRef = useRef<number>(0);
+export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFaceScanFlowResult {
+  const [machine, dispatch] = useReducer(scanReducer, MACHINE_INIT);
+  const stabilizationAnim = useRef(new Animated.Value(0)).current;
+  const cameraRef = useRef<CameraRef | null>(null);
+
+  // Guidance-derived status fields — updated at frame rate, kept separate from
+  // flow state so frequent guidance ticks don't touch the flow reducer.
+  const [guidanceStatus, setGuidanceStatus] = useState<{
+    distanceStatus: FaceScanState['distanceStatus'];
+    alignmentStatus: FaceScanState['alignmentStatus'];
+    qualityStatus: FaceScanState['qualityStatus'];
+  }>({ distanceStatus: 'good', alignmentStatus: 'noFace', qualityStatus: 'good' });
+
   const [acceptedCaptureMeta, setAcceptedCaptureMeta] = useState<{
     poseId: string | null;
     atMs: number | null;
@@ -125,11 +191,14 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
     atMs: number | null;
     outcome: 'none' | 'missing_uri' | 'pose_mismatch' | 'stale_previous_pose' | 'duplicate_for_current_pose' | 'accepted';
   }>({ poseId: null, hasUri: null, atMs: null, outcome: 'none' });
-  const stabilizingSinceRef = useRef<number | null>(null);
 
-  // Current target pose comes from state so React re-renders propagate it to
-  // useFaceDetection, which updates the SharedValue fed into the worklet.
-  const targetPose = POSES[scanState.currentPoseIndex]?.id ?? 'center';
+  // One-shot timer that fires after STABILIZATION_DROP_GRACE_MS of zero progress,
+  // replacing the 200ms polling interval that caught the same stuck-stabilizing case.
+  const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stabilizingSinceRef = useRef<number | null>(null);
+  const lastProgressAtRef = useRef<number>(0);
+
+  const targetPose = POSES[machine.poseIndex]?.id ?? 'center';
 
   const {
     guidance,
@@ -138,15 +207,21 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
     clearCaptureResult,
     frameOutput,
     isNativeLinked,
-  } =
-    useFaceDetection({ ...detectionOpts, targetPose });
+  } = useFaceDetection({ ...detectionOpts, targetPose });
 
-  // ── Drive stabilization progress bar from native ──────────────────────────
+  // ── Clear grace timer when phase leaves stabilizing ───────────────────────
   useEffect(() => {
+    if (machine.phase !== 'stabilizing' && graceTimerRef.current !== null) {
+      clearTimeout(graceTimerRef.current);
+      graceTimerRef.current = null;
+    }
+  }, [machine.phase]);
+
+  // ── Drive stabilization progress bar + phase transitions ──────────────────
+  useEffect(() => {
+    if (!machine.running) return;
     const rawProgress =
-      typeof guidance.stabilizationProgress === 'number'
-        ? guidance.stabilizationProgress
-        : 0;
+      typeof guidance.stabilizationProgress === 'number' ? guidance.stabilizationProgress : 0;
     const poseMatches = guidance.detectedPose === targetPose;
     const guidanceReady =
       guidance.faceDetected &&
@@ -156,23 +231,26 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
     const progress = poseMatches && guidanceReady ? rawProgress : 0;
     const now = Date.now();
 
-    if (progress > 0 && phaseRef.current === 'detecting') {
-      phaseRef.current = 'stabilizing';
-      lastNonZeroProgressAtRef.current = now;
-      stabilizingSinceRef.current = now;
-      setScanState(s => ({ ...s, poseStatus: 'stabilizing' }));
-    } else if (progress > 0) {
-      lastNonZeroProgressAtRef.current = now;
-    } else if (progress === 0 && phaseRef.current === 'stabilizing') {
-      const elapsedSinceNonZero = now - lastNonZeroProgressAtRef.current;
-      if (elapsedSinceNonZero >= STABILIZATION_DROP_GRACE_MS) {
-        phaseRef.current = 'detecting';
-        stabilizingSinceRef.current = null;
-        setScanState(s => ({ ...s, poseStatus: 'detecting' }));
-      }
-    }
-
     stabilizationAnim.setValue(progress);
+
+    if (progress > 0) {
+      lastProgressAtRef.current = now;
+      if (graceTimerRef.current !== null) {
+        clearTimeout(graceTimerRef.current);
+        graceTimerRef.current = null;
+      }
+      if (machine.phase === 'detecting') {
+        stabilizingSinceRef.current = now;
+        dispatch({ type: 'progress_active' });
+      }
+    } else if (machine.phase === 'stabilizing' && graceTimerRef.current === null) {
+      graceTimerRef.current = setTimeout(() => {
+        graceTimerRef.current = null;
+        stabilizingSinceRef.current = null;
+        stabilizationAnim.setValue(0);
+        dispatch({ type: 'grace_expired' });
+      }, STABILIZATION_DROP_GRACE_MS);
+    }
   }, [
     guidance.stabilizationProgress,
     guidance.detectedPose,
@@ -181,192 +259,131 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
     guidance.alignmentStatus,
     guidance.qualityStatus,
     targetPose,
+    machine.running,
+    machine.phase,
     stabilizationAnim,
   ]);
 
-  // ── Polling fallback for stabilization grace period ───────────────────────
-  // The grace-period check in the progress effect only runs when guidance deps
-  // change. If stabilizationProgress stays at 0 and nothing else moves, the
-  // effect never re-fires and poseStatus gets permanently stuck at 'stabilizing'.
-  // This interval catches that case independently of React render cycles.
+  // ── Mirror guidance status fields into scan state ─────────────────────────
   useEffect(() => {
-    const id = setInterval(() => {
-      if (phaseRef.current !== 'stabilizing') return;
-      const elapsed = Date.now() - lastNonZeroProgressAtRef.current;
-      if (elapsed >= STABILIZATION_DROP_GRACE_MS) {
-        phaseRef.current = 'detecting';
-        stabilizingSinceRef.current = null;
-        setScanState(s => ({ ...s, poseStatus: 'detecting' }));
-        stabilizationAnim.setValue(0);
-      }
-    }, 200);
-    return () => clearInterval(id);
-  }, [stabilizationAnim]);
-
-  // ── Mirror guidance fields into scan state ─────────────────────────────────
-  useEffect(() => {
-    if (!isRunningRef.current) return;
-    setScanState(s => ({
-      ...s,
+    if (!machine.running) return;
+    setGuidanceStatus({
       distanceStatus:  guidance.distanceStatus,
       alignmentStatus: guidance.alignmentStatus,
       qualityStatus:   guidance.qualityStatus,
-    }));
-  }, [guidance.distanceStatus, guidance.alignmentStatus, guidance.qualityStatus]);
+    });
+  }, [guidance.distanceStatus, guidance.alignmentStatus, guidance.qualityStatus, machine.running]);
 
   // ── React to native capture events ────────────────────────────────────────
   useEffect(() => {
-    if (!captureResult || !isRunningRef.current) return;
-    setLastCaptureEvent({
-      poseId: captureResult.poseId ?? null,
-      hasUri: !!captureResult.uri,
-      atMs: Date.now(),
-      outcome: 'none',
-    });
+    if (!captureResult || !machine.running) return;
+
     if (!captureResult.uri) {
-      setLastCaptureEvent({
-        poseId: captureResult.poseId ?? null,
-        hasUri: false,
-        atMs: Date.now(),
-        outcome: 'missing_uri',
-      });
+      setLastCaptureEvent({ poseId: captureResult.poseId ?? null, hasUri: false, atMs: Date.now(), outcome: 'missing_uri' });
       clearCaptureResult();
-      // Native delivered a window with no viable frames — reset so pipeline retries.
-      if (phaseRef.current !== 'captured') {
-        phaseRef.current = 'detecting';
+      if (machine.phase !== 'captured') {
         stabilizingSinceRef.current = null;
-        lastNonZeroProgressAtRef.current = 0;
-        setScanState(s => ({ ...s, poseStatus: 'detecting' }));
+        lastProgressAtRef.current = 0;
         stabilizationAnim.setValue(0);
+        dispatch({ type: 'capture_bad' });
       }
       return;
     }
 
-    const poseIdx = poseIndexRef.current;
-    const pose    = POSES[poseIdx];
+    const pose = POSES[machine.poseIndex];
     const completedPoseIds = new Set(
-      capturedRef.current
-        .filter((f): f is CapturedFrame => f != null)
-        .map(f => f.poseId),
+      machine.frames.filter((f): f is CapturedFrame => f != null).map(f => f.poseId),
     );
+
     if (completedPoseIds.has(captureResult.poseId as CapturedFrame['poseId'])) {
-      setLastCaptureEvent({
-        poseId: captureResult.poseId ?? null,
-        hasUri: true,
-        atMs: Date.now(),
-        outcome: 'stale_previous_pose',
-      });
+      setLastCaptureEvent({ poseId: captureResult.poseId ?? null, hasUri: true, atMs: Date.now(), outcome: 'stale_previous_pose' });
       clearCaptureResult();
       return;
     }
-    if (phaseRef.current === 'captured' && captureResult.poseId === pose.id) {
-      setLastCaptureEvent({
-        poseId: captureResult.poseId ?? null,
-        hasUri: true,
-        atMs: Date.now(),
-        outcome: 'duplicate_for_current_pose',
-      });
+    if (machine.phase === 'captured' && captureResult.poseId === pose.id) {
+      setLastCaptureEvent({ poseId: captureResult.poseId ?? null, hasUri: true, atMs: Date.now(), outcome: 'duplicate_for_current_pose' });
       clearCaptureResult();
       return;
     }
     if (captureResult.poseId !== pose.id) {
-      setLastCaptureEvent({
-        poseId: captureResult.poseId ?? null,
-        hasUri: true,
-        atMs: Date.now(),
-        outcome: 'pose_mismatch',
-      });
+      setLastCaptureEvent({ poseId: captureResult.poseId ?? null, hasUri: true, atMs: Date.now(), outcome: 'pose_mismatch' });
       clearCaptureResult();
       return;
     }
 
+    const frame: CapturedFrame = { poseId: pose.id, uri: captureResult.uri };
     clearCaptureResult();
-
-    const frame: CapturedFrame = {
-      poseId:    pose.id,
-      uri: captureResult.uri,
-    };
-
-    const newFrames = capturedRef.current.map((f, i) => (i === poseIdx ? frame : f));
-    capturedRef.current = newFrames;
+    dispatch({ type: 'capture_ok', frame, poseIndex: machine.poseIndex });
     setAcceptedCaptureMeta({ poseId: pose.id, atMs: Date.now() });
-    setLastCaptureEvent({
-      poseId: pose.id,
-      hasUri: true,
-      atMs: Date.now(),
-      outcome: 'accepted',
-    });
-
-    phaseRef.current = 'captured';
-    stabilizingSinceRef.current = null;
-    setScanState(s => ({ ...s, poseStatus: 'captured', capturedFrames: newFrames }));
+    setLastCaptureEvent({ poseId: pose.id, hasUri: true, atMs: Date.now(), outcome: 'accepted' });
     stabilizationAnim.setValue(0);
 
     setTimeout(() => {
-      if (!isRunningRef.current) return;
-      const next = poseIdx + 1;
-      if (next < POSES.length) {
-        poseIndexRef.current = next;
-        phaseRef.current     = 'detecting';
-        stabilizingSinceRef.current = null;
-        setScanState(s => ({
-          ...s,
-          currentPoseIndex: next,
-          poseStatus:       'detecting',
-        }));
-      } else {
-        isRunningRef.current = false;
-        setScanState(s => ({ ...s, screen: 'success' }));
-      }
+      dispatch({ type: 'advance' });
     }, CAPTURE_FLASH_MS);
-  }, [captureResult, clearCaptureResult, stabilizationAnim]);
+  }, [captureResult, clearCaptureResult, machine.running, machine.poseIndex, machine.phase, machine.frames, stabilizationAnim]);
 
   // ── startScan / retakeScan ────────────────────────────────────────────────
-  const startScan = useCallback(() => {
+  const resetAux = useCallback(() => {
     stabilizationAnim.setValue(0);
-    isRunningRef.current = true;
-    poseIndexRef.current = 0;
-    phaseRef.current     = 'detecting';
-    capturedRef.current  = [...BLANK_FRAMES];
+    if (graceTimerRef.current !== null) {
+      clearTimeout(graceTimerRef.current);
+      graceTimerRef.current = null;
+    }
+    stabilizingSinceRef.current = null;
+    lastProgressAtRef.current = 0;
     setAcceptedCaptureMeta({ poseId: null, atMs: null });
     setLastCaptureEvent({ poseId: null, hasUri: null, atMs: null, outcome: 'none' });
-    stabilizingSinceRef.current = null;
-    setScanState({
-      ...INITIAL_STATE,
-      screen:         'scanning',
-      poseStatus:     'detecting',
-      capturedFrames: [...BLANK_FRAMES],
-    });
+    setGuidanceStatus({ distanceStatus: 'good', alignmentStatus: 'noFace', qualityStatus: 'good' });
   }, [stabilizationAnim]);
 
+  const startScan = useCallback(() => {
+    resetAux();
+    dispatch({ type: 'start' });
+  }, [resetAux]);
+
   const retakeScan = useCallback(() => {
-    isRunningRef.current = false;
-    startScan();
-  }, [startScan]);
+    resetAux();
+    dispatch({ type: 'retake' });
+  }, [resetAux]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    return () => { isRunningRef.current = false; };
+    return () => {
+      if (graceTimerRef.current !== null) clearTimeout(graceTimerRef.current);
+    };
   }, []);
 
+  // ── Derive FaceScanState ──────────────────────────────────────────────────
+  const screen: FaceScanState['screen'] = machine.done ? 'success' : machine.running ? 'scanning' : 'intro';
+  const poseStatus: FaceScanState['poseStatus'] = machine.running ? machine.phase : 'idle';
+
+  const state: FaceScanState = {
+    screen,
+    currentPoseIndex: machine.poseIndex,
+    poseStatus,
+    ...guidanceStatus,
+    capturedFrames: machine.frames,
+  };
+
   return {
-    state: scanState,
+    state,
     debugReadout: {
       ...debugReadout,
       targetPose,
       acceptedCapturePoseId: acceptedCaptureMeta.poseId,
       acceptedCaptureAtMs: acceptedCaptureMeta.atMs,
-      completedPoseIds: scanState.capturedFrames
+      completedPoseIds: machine.frames
         .filter((f): f is CapturedFrame => f != null)
         .map(f => f.poseId),
-      poseStatus: scanState.poseStatus,
+      poseStatus,
       stabilizingForMs:
-        scanState.poseStatus === 'stabilizing' && stabilizingSinceRef.current != null
+        poseStatus === 'stabilizing' && stabilizingSinceRef.current != null
           ? Date.now() - stabilizingSinceRef.current
           : null,
       msSinceLastProgress:
-        scanState.poseStatus === 'stabilizing' && lastNonZeroProgressAtRef.current > 0
-          ? Date.now() - lastNonZeroProgressAtRef.current
+        poseStatus === 'stabilizing' && lastProgressAtRef.current > 0
+          ? Date.now() - lastProgressAtRef.current
           : null,
       lastCaptureEvent,
       validation: {

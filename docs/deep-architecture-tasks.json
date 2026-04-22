@@ -54,10 +54,11 @@
       "area": "JS Runtime",
       "priority": 4,
       "sourceRank": 4,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Reduce refs + polling interval orchestration complexity"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-22",
+      "notes": "Replaced phaseRef/poseIndexRef/isRunningRef/capturedRef with useReducer(scanReducer); replaced 200ms polling fallback interval with a one-shot setTimeout grace timer"
     },
     {
       "id": "T05",
