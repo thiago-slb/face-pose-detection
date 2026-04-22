@@ -42,10 +42,11 @@
       "area": "iOS",
       "priority": 3,
       "sourceRank": 3,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Avoid per-encode CIContext allocations"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-22",
+      "notes": "Promoted CIContext to a stored property on FaceCapturePipeline; encodeJPEG reuses it instead of allocating per call"
     },
     {
       "id": "T04",

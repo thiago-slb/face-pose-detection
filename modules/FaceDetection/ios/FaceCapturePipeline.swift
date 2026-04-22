@@ -39,6 +39,7 @@ final class FaceCapturePipeline {
   private let NOT_READY_GRACE_FRAMES = 6
   private let lock = NSLock()
   private let encodeQueue = DispatchQueue(label: "com.pocfacescan.encode", qos: .userInitiated)
+  private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
   /// Called on `encodeQueue` when a frame has been selected and saved.
   /// Payload: { type, poseId, uri?, qualityScore, scores }
@@ -210,8 +211,7 @@ final class FaceCapturePipeline {
     guard let pixelBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
     // Use GPU-backed CIContext to avoid software rendering overhead
     let ci  = CIImage(cvPixelBuffer: pixelBuffer)
-    let ctx = CIContext(options: [.useSoftwareRenderer: false])
-    guard let cg  = ctx.createCGImage(ci, from: ci.extent) else { return nil }
+    guard let cg  = ciContext.createCGImage(ci, from: ci.extent) else { return nil }
     let img = UIImage(cgImage: cg)
     guard let data = img.jpegData(compressionQuality: CaptureConfig.jpegQuality) else { return nil }
     let url = FileManager.default.temporaryDirectory
