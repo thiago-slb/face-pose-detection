@@ -102,10 +102,11 @@
       "area": "Reliability",
       "priority": 8,
       "sourceRank": 8,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Bind Camera.isActive to route focus + AppState"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-22",
+      "notes": "Camera.isActive now derived from useIsFocused() && AppState === 'active'; camera stops when app backgrounds or screen loses focus"
     },
     {
       "id": "T09",

@@ -1,11 +1,13 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Animated,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { CameraRef } from "react-native-vision-camera";
 import {
@@ -235,6 +237,18 @@ export function FaceScanCameraScreen({
   const pose = POSES[state.currentPoseIndex];
   const { hasPermission } = useCameraPermission();
 
+  const isFocused = useIsFocused();
+  const [appIsActive, setAppIsActive] = useState(
+    AppState.currentState === "active",
+  );
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) =>
+      setAppIsActive(next === "active"),
+    );
+    return () => sub.remove();
+  }, []);
+  const isCameraActive = isFocused && appIsActive;
+
   if (!hasPermission) {
     return <PermissionGate onGranted={() => {}} />;
   }
@@ -254,7 +268,7 @@ export function FaceScanCameraScreen({
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         device={device}
-        isActive={true}
+        isActive={isCameraActive}
         outputs={[frameOutput]}
         // Keep the front camera preview mirrored (selfie feel)
         mirrorMode="on"
