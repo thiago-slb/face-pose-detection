@@ -1,13 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { C } from "../../constants/faceScanConfig";
 
 const TIPS = [
