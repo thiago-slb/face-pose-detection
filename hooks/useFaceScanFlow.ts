@@ -386,7 +386,7 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
           ? Date.now() - lastProgressAtRef.current
           : null,
       lastCaptureEvent,
-      validation: {
+      validation: __DEV__ ? {
         poseMatch: guidance.detectedPose === targetPose,
         faceDetected: guidance.faceDetected,
         distanceGood: guidance.distanceStatus === 'good',
@@ -468,6 +468,13 @@ export function useFaceScanFlow(detectionOpts?: UseFaceDetectionOptions): UseFac
           guidance.distanceStatus === 'good' &&
           guidance.alignmentStatus === 'centered' &&
           guidance.qualityStatus === 'good',
+      } : {
+        poseMatch: false, faceDetected: false, distanceGood: false,
+        alignmentCentered: false, qualityGood: false, yawWithinWindow: false,
+        pitchWithinWindow: false, directionalReady: false, centerednessReady: false,
+        alignmentXReady: false, alignmentYReady: false, faceSizeReady: false,
+        brightnessReady: false, sharpnessReady: false, centerednessScore: null,
+        guidanceReady: false,
       },
     },
     stabilizationAnim,

@@ -90,10 +90,11 @@
       "area": "UI / DX",
       "priority": 7,
       "sourceRank": 7,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Keep production render path lean"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-22",
+      "notes": "Debug panel in FaceScanCameraScreen wrapped with __DEV__; validation IIFEs in useFaceScanFlow gated with __DEV__ ternary so production renders stubs instead of computing per-frame"
     },
     {
       "id": "T08",

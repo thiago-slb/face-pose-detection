@@ -283,144 +283,146 @@ export function FaceScanCameraScreen({
         <TopBar onCancel={onCancel} currentIndex={state.currentPoseIndex} />
       </View>
 
-      {/* ── Temporary debug readout ── */}
-      <View style={[styles.debugPanel, { top: insets.top + 56 }]}>
-        <Text style={styles.debugText}>
-          {`faceDetected: ${debugReadout.faceDetected ? "yes" : "no"}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`targetPose: ${debugReadout.targetPose}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`detectedPose: ${debugReadout.detectedPose}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`cx: ${debugReadout.cx == null ? "n/a" : debugReadout.cx.toFixed(3)}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`cy: ${debugReadout.cy == null ? "n/a" : debugReadout.cy.toFixed(3)}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`yaw/pitch: ${
-            debugReadout.yaw == null || debugReadout.pitch == null
-              ? "n/a"
-              : `${debugReadout.yaw.toFixed(1)} / ${debugReadout.pitch.toFixed(1)}`
-          }`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`alignment: ${debugReadout.alignmentStatus}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`status/progress: ${debugReadout.poseStatus} / ${debugReadout.stabilizationProgress.toFixed(2)}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`stabilizingFor(ms): ${debugReadout.stabilizingForMs ?? "-"}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`sinceProgress(ms): ${debugReadout.msSinceLastProgress ?? "-"}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`nativeCapture: ${debugReadout.lastNativeCapturePoseId ?? "-"}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`acceptedCapture: ${debugReadout.acceptedCapturePoseId ?? "-"}`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`lastCaptureEvent: ${debugReadout.lastCaptureEvent.outcome} (${debugReadout.lastCaptureEvent.poseId ?? "-"})`}
-        </Text>
-        <Text style={styles.debugText}>
-          {`completed: ${debugReadout.completedPoseIds.join(", ") || "-"}`}
-        </Text>
+      {/* ── Debug readout (dev builds only) ── */}
+      {__DEV__ && (
+        <View style={[styles.debugPanel, { top: insets.top + 56 }]}>
+          <Text style={styles.debugText}>
+            {`faceDetected: ${debugReadout.faceDetected ? "yes" : "no"}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`targetPose: ${debugReadout.targetPose}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`detectedPose: ${debugReadout.detectedPose}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`cx: ${debugReadout.cx == null ? "n/a" : debugReadout.cx.toFixed(3)}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`cy: ${debugReadout.cy == null ? "n/a" : debugReadout.cy.toFixed(3)}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`yaw/pitch: ${
+              debugReadout.yaw == null || debugReadout.pitch == null
+                ? "n/a"
+                : `${debugReadout.yaw.toFixed(1)} / ${debugReadout.pitch.toFixed(1)}`
+            }`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`alignment: ${debugReadout.alignmentStatus}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`status/progress: ${debugReadout.poseStatus} / ${debugReadout.stabilizationProgress.toFixed(2)}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`stabilizingFor(ms): ${debugReadout.stabilizingForMs ?? "-"}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`sinceProgress(ms): ${debugReadout.msSinceLastProgress ?? "-"}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`nativeCapture: ${debugReadout.lastNativeCapturePoseId ?? "-"}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`acceptedCapture: ${debugReadout.acceptedCapturePoseId ?? "-"}`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`lastCaptureEvent: ${debugReadout.lastCaptureEvent.outcome} (${debugReadout.lastCaptureEvent.poseId ?? "-"})`}
+          </Text>
+          <Text style={styles.debugText}>
+            {`completed: ${debugReadout.completedPoseIds.join(", ") || "-"}`}
+          </Text>
 
-        <View style={styles.debugDivider} />
-        <DebugGateRow
-          label="poseMatch"
-          ok={debugReadout.validation.poseMatch}
-          value={`${debugReadout.detectedPose} -> ${debugReadout.targetPose}`}
-        />
-        <DebugGateRow
-          label="guidanceReady"
-          ok={debugReadout.validation.guidanceReady}
-        />
-        <DebugGateRow
-          label="faceDetected"
-          ok={debugReadout.validation.faceDetected}
-        />
-        <DebugGateRow
-          label="distanceGood"
-          ok={debugReadout.validation.distanceGood}
-        />
-        <DebugGateRow
-          label="alignmentCentered"
-          ok={debugReadout.validation.alignmentCentered}
-        />
-        <DebugGateRow
-          label="qualityGood"
-          ok={debugReadout.validation.qualityGood}
-        />
-        <DebugGateRow
-          label="directionalReady"
-          ok={debugReadout.validation.directionalReady}
-        />
-        <DebugGateRow
-          label="centeredness"
-          ok={debugReadout.validation.centerednessReady}
-          value={
-            debugReadout.validation.centerednessScore == null
-              ? "n/a"
-              : debugReadout.validation.centerednessScore.toFixed(3)
-          }
-        />
-        <DebugGateRow
-          label="yawWindow"
-          ok={debugReadout.validation.yawWithinWindow}
-          value={debugReadout.yaw == null ? "n/a" : debugReadout.yaw.toFixed(1)}
-        />
-        <DebugGateRow
-          label="pitchWindow"
-          ok={debugReadout.validation.pitchWithinWindow}
-          value={
-            debugReadout.pitch == null ? "n/a" : debugReadout.pitch.toFixed(1)
-          }
-        />
-        <DebugGateRow
-          label="alignX"
-          ok={debugReadout.validation.alignmentXReady}
-          value={debugReadout.cx == null ? "n/a" : debugReadout.cx.toFixed(3)}
-        />
-        <DebugGateRow
-          label="alignY"
-          ok={debugReadout.validation.alignmentYReady}
-          value={debugReadout.cy == null ? "n/a" : debugReadout.cy.toFixed(3)}
-        />
-        <DebugGateRow
-          label="faceSize"
-          ok={debugReadout.validation.faceSizeReady}
-          value={
-            debugReadout.faceSizeRatio == null
-              ? "n/a"
-              : debugReadout.faceSizeRatio.toFixed(3)
-          }
-        />
-        <DebugGateRow
-          label="brightness"
-          ok={debugReadout.validation.brightnessReady}
-          value={
-            debugReadout.brightness == null
-              ? "n/a"
-              : debugReadout.brightness.toFixed(3)
-          }
-        />
-        <DebugGateRow
-          label="sharpness"
-          ok={debugReadout.validation.sharpnessReady}
-          value={
-            debugReadout.sharpness == null
-              ? "n/a"
-              : debugReadout.sharpness.toFixed(3)
-          }
-        />
-      </View>
+          <View style={styles.debugDivider} />
+          <DebugGateRow
+            label="poseMatch"
+            ok={debugReadout.validation.poseMatch}
+            value={`${debugReadout.detectedPose} -> ${debugReadout.targetPose}`}
+          />
+          <DebugGateRow
+            label="guidanceReady"
+            ok={debugReadout.validation.guidanceReady}
+          />
+          <DebugGateRow
+            label="faceDetected"
+            ok={debugReadout.validation.faceDetected}
+          />
+          <DebugGateRow
+            label="distanceGood"
+            ok={debugReadout.validation.distanceGood}
+          />
+          <DebugGateRow
+            label="alignmentCentered"
+            ok={debugReadout.validation.alignmentCentered}
+          />
+          <DebugGateRow
+            label="qualityGood"
+            ok={debugReadout.validation.qualityGood}
+          />
+          <DebugGateRow
+            label="directionalReady"
+            ok={debugReadout.validation.directionalReady}
+          />
+          <DebugGateRow
+            label="centeredness"
+            ok={debugReadout.validation.centerednessReady}
+            value={
+              debugReadout.validation.centerednessScore == null
+                ? "n/a"
+                : debugReadout.validation.centerednessScore.toFixed(3)
+            }
+          />
+          <DebugGateRow
+            label="yawWindow"
+            ok={debugReadout.validation.yawWithinWindow}
+            value={debugReadout.yaw == null ? "n/a" : debugReadout.yaw.toFixed(1)}
+          />
+          <DebugGateRow
+            label="pitchWindow"
+            ok={debugReadout.validation.pitchWithinWindow}
+            value={
+              debugReadout.pitch == null ? "n/a" : debugReadout.pitch.toFixed(1)
+            }
+          />
+          <DebugGateRow
+            label="alignX"
+            ok={debugReadout.validation.alignmentXReady}
+            value={debugReadout.cx == null ? "n/a" : debugReadout.cx.toFixed(3)}
+          />
+          <DebugGateRow
+            label="alignY"
+            ok={debugReadout.validation.alignmentYReady}
+            value={debugReadout.cy == null ? "n/a" : debugReadout.cy.toFixed(3)}
+          />
+          <DebugGateRow
+            label="faceSize"
+            ok={debugReadout.validation.faceSizeReady}
+            value={
+              debugReadout.faceSizeRatio == null
+                ? "n/a"
+                : debugReadout.faceSizeRatio.toFixed(3)
+            }
+          />
+          <DebugGateRow
+            label="brightness"
+            ok={debugReadout.validation.brightnessReady}
+            value={
+              debugReadout.brightness == null
+                ? "n/a"
+                : debugReadout.brightness.toFixed(3)
+            }
+          />
+          <DebugGateRow
+            label="sharpness"
+            ok={debugReadout.validation.sharpnessReady}
+            value={
+              debugReadout.sharpness == null
+                ? "n/a"
+                : debugReadout.sharpness.toFixed(3)
+            }
+          />
+        </View>
+      )}
 
       {/* ── Alignment banner ── */}
       <AlignmentBanner alignmentStatus={state.alignmentStatus} />
