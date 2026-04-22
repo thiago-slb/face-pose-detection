@@ -300,6 +300,14 @@ class FaceDetectionFrameProcessor : HybridFaceDetectionFrameProcessorSpec() {
     return brightness to sharpness
   }
 
+  protected fun finalize() {
+    try {
+      detector.close()
+      detectorExecutor.shutdown()
+      pipeline.close()
+    } catch (_: Exception) {}
+  }
+
   private fun noFaceResult(targetPose: String = "center"): Variant_NullType_GuidanceResult_CaptureResult {
     pipeline.processFrame(null, false, 0f, 0f, 0.5f, 0.5f, 0f, 0.5f, 0f, targetPose)
     return Variant_NullType_GuidanceResult_CaptureResult.create(

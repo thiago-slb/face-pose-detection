@@ -26,6 +26,12 @@ class FaceDetectionFrameProcessor: HybridFaceDetectionFrameProcessorSpec {
     }
   }
 
+  deinit {
+    // Break the retain cycle and stop the pipeline accepting new captures.
+    pipeline.onCapture = nil
+    pipeline.reset()
+  }
+
   func processFrame(frame: any HybridFrameSpec, args: FaceDetectionArgs) throws -> Variant_NullType_GuidanceResult_CaptureResult {
     let targetPose = args.targetPose
     if let previousPose = lastTargetPose, previousPose != targetPose {

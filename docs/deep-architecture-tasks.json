@@ -114,10 +114,11 @@
       "area": "Android / iOS",
       "priority": 9,
       "sourceRank": 9,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Close detector/executors and define lifecycle ownership"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-22",
+      "notes": "Android: finalize() closes ML Kit detector, shuts down detectorExecutor, and calls pipeline.close() which shuts down the encoder executor; iOS: deinit nils pipeline.onCapture and calls pipeline.reset() to stop in-flight stabilization"
     },
     {
       "id": "T10",

@@ -128,6 +128,11 @@ class FaceCapturePipeline(private val context: Context) {
     }
   }
 
+  fun close() {
+    onCapture = null
+    encoder.shutdown()
+  }
+
   private fun tryCollect(
     image: ImageProxy,
     yaw: Float,
