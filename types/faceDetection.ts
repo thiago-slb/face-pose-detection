@@ -1,3 +1,6 @@
+import { NativeResultType } from '../modules/FaceDetection/src/specs/FaceDetectionFrameProcessor.nitro';
+export { NativeResultType };
+
 // ─── Raw output from native frame processor plugin ──────────────────────────
 // All bounding box values are normalized 0-1, top-left origin.
 // Angles are in degrees; sign conventions are platform-normalized by the native layer:
@@ -27,7 +30,7 @@ export interface RawFaceDetectionResult {
 
 /** Per-frame guidance data — emitted on every processed frame. */
 export interface NativeGuidanceResult {
-  type: 'guidance';
+  type: NativeResultType.GUIDANCE;
   faceDetected: boolean;
   boundingBoxX?: number;
   boundingBoxY?: number;
@@ -47,7 +50,7 @@ export interface NativeGuidanceResult {
 
 /** Per-pose capture result — emitted once when the native pipeline selects its best frame. */
 export interface NativeCaptureResult {
-  type: 'captured';
+  type: NativeResultType.CAPTURED;
   poseId: string;
   /** Absolute file path to the saved JPEG. Absent in mock mode or on simulator. */
   uri?: string;

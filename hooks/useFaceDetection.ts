@@ -24,6 +24,7 @@ import { FaceDataSmoother } from '../utils/emaFilter';
 import { applySmoothing, deriveGuidance } from '../utils/faceGuidance';
 import {
   DEFAULT_THRESHOLDS,
+  NativeResultType,
   type DetectionThresholds,
   type FaceGuidance,
   type NativeGuidanceResult,
@@ -201,7 +202,7 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
         timerId = setTimeout(() => {
           setCaptureResult({
-            type:         'captured',
+            type:         NativeResultType.CAPTURED,
             poseId:       targetPose,
             qualityScore: 0.92,
             scores: {
@@ -234,26 +235,17 @@ export function useFaceDetection(opts: UseFaceDetectionOptions = {}): UseFaceDet
 
   // ── Real frame result handler (JS thread, called via runOnJS) ──
   const handleResult = useCallback((raw: NativeFrameResult) => {
-    // Native bridges can encode tagged unions either as string literals
-    // ('guidance' | 'captured') or numeric enum values (0 | 1).
-    const kind = (raw as { type?: unknown })?.type;
-    const isCaptured = kind === 'captured' || kind === 1;
-    const isGuidance = kind === 'guidance' || kind === 0;
-
-    if (isCaptured) {
-      const capture = raw as NativeCaptureResult;
+    if (raw.type === NativeResultType.CAPTURED) {
       latestDebugRef.current = {
         ...latestDebugRef.current,
-        lastNativeCapturePoseId: typeof capture.poseId === 'string' ? capture.poseId : null,
+        lastNativeCapturePoseId: raw.poseId,
         lastNativeCaptureAtMs: Date.now(),
       };
-      setCaptureResult(capture);
+      setCaptureResult(raw);
       return;
     }
-    if (!isGuidance) return;
-    const guidanceRaw = raw as NativeGuidanceResult;
+    const guidanceRaw: NativeGuidanceResult = raw;
 
-    // type === 'guidance'
     const asRaw: RawFaceDetectionResult | null = guidanceRaw.faceDetected
       ? {
           faceDetected: true,

@@ -66,10 +66,11 @@
       "area": "Nitro Modules / TypeScript",
       "priority": 5,
       "sourceRank": 5,
-      "status": "pending",
-      "performed": false,
-      "completed": false,
-      "notes": "Remove numeric/string union coercion path"
+      "status": "completed",
+      "performed": true,
+      "completed": true,
+      "completedAt": "2026-04-22",
+      "notes": "NativeGuidanceResult and NativeCaptureResult now use NativeResultType enum discriminant from the Nitro spec; handleResult uses TypeScript union narrowing; removed 'guidance'|0 / 'captured'|1 coercion"
     },
     {
       "id": "T06",
