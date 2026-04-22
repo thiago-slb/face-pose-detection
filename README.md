@@ -63,12 +63,16 @@ If not linked, `detectFace` returns `null` and the hook can run in mock mode.
 File: `hooks/useFaceDetection.ts`
 
 Responsibilities:
-- runs frame processing with throttling (`processEveryNFrames`, default 2)
+- runs frame processing with frame-skip throttling (`processEveryNFrames`, default 2)
 - forwards current `targetPose` directly from the worklet closure into native `processFrame(...)`
 - maps native guidance to app guidance model
 - handles native captured events
 - supports mock mode (`mockMode = !isPluginLinked` by default)
 - updates React state on interval (`stateUpdateIntervalMs`, default 100ms)
+
+Worklet-level guidance throttle:
+- capture results bypass all throttling and are dispatched to JS immediately
+- guidance results are gated by a 100ms SharedValue timestamp in the worklet, capping JS thread wakeups at ~10 Hz regardless of camera frame rate
 
 ### 4.3 Scan flow hook
 
@@ -79,6 +83,10 @@ Responsibilities:
 - pose status transitions (`detecting`, `stabilizing`, `captured`)
 - stores captured frame URIs per pose
 - advances to success screen when all poses complete
+
+State model:
+- flow control uses a single `useReducer` (`MachineState` + typed `MachineAction`) instead of scattered mutable refs
+- the stabilization grace period is enforced by a one-shot `setTimeout` rather than a polling interval; the timer is started when `stabilizationProgress` drops to 0 while stabilizing, and cancelled if progress resumes before it fires
 
 ## 5. Native Module Architecture (Nitro)
 
@@ -136,19 +144,22 @@ Processing details:
 App-level TypeScript contract:
 - `types/faceDetection.ts`
 
+The `type` field is a numeric enum (`NativeResultType`): `GUIDANCE = 0`, `CAPTURED = 1`.
+Both the Nitro spec and `types/faceDetection.ts` use this enum as the discriminant — no string coercion at runtime.
+
 Native frame result union consumed by hooks:
-- `guidance`
-- `faceDetected`
-- `boundingBoxX/Y/Width/Height`
-- `yaw/pitch/roll`
-- `brightness/sharpness`
-- `faceSizeRatio`, `faceCenterX/Y`
-- `stabilizationProgress`
-- `captured`
-- `poseId`
-- `uri` (local file path)
-- `qualityScore`
-- `scores` (`brightness`, `sharpness`, `centeredness`, `poseAccuracy`, `stability`, `faceSize`, `composite`)
+- `type: NativeResultType.GUIDANCE (0)` — per-frame telemetry
+  - `faceDetected`
+  - `boundingBoxX/Y/Width/Height`
+  - `yaw/pitch/roll`
+  - `brightness/sharpness`
+  - `faceSizeRatio`, `faceCenterX/Y`
+  - `stabilizationProgress`
+- `type: NativeResultType.CAPTURED (1)` — best-frame event for current pose
+  - `poseId`
+  - `uri` (local file path)
+  - `qualityScore`
+  - `scores` (`brightness`, `sharpness`, `centeredness`, `poseAccuracy`, `stability`, `faceSize`, `composite`)
 
 ## 9. Stabilization and Best-Frame Selection
 
@@ -171,9 +182,13 @@ When native module is unavailable:
 - `useFaceDetection` defaults to mock mode
 - app still runs full UX flow with synthetic guidance/capture
 
-## 10.1 Calibration/Debug Notes
+## 10.1 Camera Lifecycle
 
-- The scan camera screen includes a temporary debug panel showing pose/quality/alignment gates used by detection/capture.
+`Camera.isActive` is derived from `useIsFocused() && AppState === 'active'` inside `FaceScanCameraScreen`. The camera pauses automatically when the app is backgrounded or the screen loses navigation focus.
+
+## 10.2 Calibration/Debug Notes
+
+- The scan camera screen includes a debug overlay (visible in `__DEV__` builds only) showing pose/quality/alignment gates used by detection/capture.
 - If UI pose and capture pose disagree, verify that the native `targetPose` passed into `processFrame(...)` matches the current step.
 - If vertical pose feels inverted on a platform/device, check that native pitch sign convention remains `+up / -down` before tuning thresholds.
 
@@ -194,6 +209,7 @@ When native module is unavailable:
 - `hooks/useFaceScanFlow.ts`
 - `frameProcessors/detectFace.ts`
 - `types/faceDetection.ts`
+- `constants/nativeContract.ts` — canonical cross-platform threshold/pose-target values; must stay in sync with both `CaptureConfig` files
 - `modules/FaceDetection/src/specs/FaceDetectionFrameProcessor.nitro.ts`
 - `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/FaceDetectionFrameProcessor.kt`
 - `modules/FaceDetection/android/src/main/java/com/margelo/nitro/facedetection/FaceCapturePipeline.kt`
